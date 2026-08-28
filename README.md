@@ -44,7 +44,7 @@ EyeZen vai além do modo noturno padrão do Windows. Em vez de um único slider 
 
 ## Funcionalidades
 
-- 16 filtros preset (Noturno Suave, Papel Creme, Fósforo Âmbar, Modo Feliz, Modo Retrô, Astrônomo e outros)
+- 24 filtros preset no total: 16 de conforto visual (Noturno Suave, Papel Creme, Fósforo Âmbar, Modo Feliz, Modo Retrô, Astrônomo e outros) + 8 filtros criativos, adicionados na v2.1.0 (Psicodélico, Tubbies, Sandman, Chiado, Papel, Ultradark, Lanterna, Vela)
 - Slider de intensidade de 0 a 150%
 - Troca automática de filtro por app em foco (Chrome, VS Code, Word, etc.)
 - Agendamento por intervalo de horário
