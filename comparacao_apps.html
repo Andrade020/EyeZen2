@@ -1,0 +1,343 @@
+<!DOCTYPE html>
+<html lang="pt-BR">
+<head>
+<meta charset="UTF-8">
+<title>EyeZen — Comparação de Apps</title>
+<style>
+  * { margin: 0; padding: 0; box-sizing: border-box; }
+  body {
+    background: #0d0d14;
+    font-family: 'Segoe UI', system-ui, sans-serif;
+    padding: 40px 32px;
+    color: #fff;
+  }
+
+  h1 {
+    text-align: center;
+    color: #00d282;
+    font-size: 20px;
+    font-weight: 700;
+    letter-spacing: 0.04em;
+    margin-bottom: 6px;
+  }
+  .subtitle {
+    text-align: center;
+    color: #444;
+    font-size: 12.5px;
+    margin-bottom: 36px;
+    letter-spacing: 0.02em;
+  }
+
+  .wrap {
+    max-width: 860px;
+    margin: 0 auto;
+  }
+
+  table {
+    width: 100%;
+    border-collapse: collapse;
+    font-size: 13px;
+  }
+
+  /* ── Cabeçalho ── */
+  thead th {
+    padding: 14px 16px;
+    text-align: center;
+    font-size: 13px;
+    font-weight: 700;
+    letter-spacing: 0.03em;
+    border-bottom: 2px solid #1a1a28;
+    position: relative;
+  }
+  thead th:first-child {
+    text-align: left;
+    color: #555;
+    font-weight: 400;
+    font-size: 11px;
+    text-transform: uppercase;
+    letter-spacing: 0.08em;
+  }
+  .col-eyezen {
+    background: rgba(0, 210, 130, 0.06);
+    border-left: 1px solid rgba(0,210,130,0.15);
+    border-right: 1px solid rgba(0,210,130,0.15);
+    color: #00d282;
+  }
+  .col-eyezen .app-name { color: #00d282; }
+  .col-flux   { color: #e0a060; }
+  .col-nl     { color: #60a0e0; }
+  .col-iris   { color: #c060e0; }
+
+  .app-name { display: block; font-size: 14px; margin-bottom: 2px; }
+  .app-sub  { display: block; font-size: 10px; font-weight: 400; opacity: 0.55; }
+
+  .badge-highlight {
+    display: inline-block;
+    background: rgba(0,210,130,0.15);
+    color: #00d282;
+    font-size: 9px;
+    font-weight: 700;
+    letter-spacing: 0.06em;
+    padding: 2px 6px;
+    border-radius: 4px;
+    margin-top: 4px;
+    text-transform: uppercase;
+  }
+
+  /* ── Linhas ── */
+  tbody tr { border-bottom: 1px solid #15151f; }
+  tbody tr:hover { background: rgba(255,255,255,0.02); }
+
+  td {
+    padding: 12px 16px;
+    text-align: center;
+    vertical-align: middle;
+    color: #888;
+  }
+  td:first-child {
+    text-align: left;
+    color: #aaa;
+    font-size: 12.5px;
+  }
+  td.col-eyezen {
+    background: rgba(0, 210, 130, 0.04);
+    border-left: 1px solid rgba(0,210,130,0.08);
+    border-right: 1px solid rgba(0,210,130,0.08);
+  }
+
+  /* ── Separadores de categoria ── */
+  .section-row td {
+    padding: 18px 16px 6px;
+    font-size: 10px;
+    font-weight: 700;
+    text-transform: uppercase;
+    letter-spacing: 0.1em;
+    color: #333;
+    border-bottom: none;
+    background: none !important;
+  }
+
+  /* ── Ícones ── */
+  .yes  { color: #00d282; font-size: 16px; }
+  .no   { color: #333;    font-size: 16px; }
+  .part { color: #c8861a; font-size: 13px; font-weight: 600; }
+  .val  { color: #ddd;    font-size: 12px; font-weight: 600; }
+  .val-dim { color: #555; font-size: 12px; }
+  .val-best { color: #00d282; font-size: 12px; font-weight: 700; }
+
+  /* ── Rodapé ── */
+  .legend {
+    display: flex;
+    gap: 24px;
+    justify-content: center;
+    margin-top: 24px;
+    font-size: 11px;
+    color: #444;
+  }
+  .legend span { display: flex; align-items: center; gap: 6px; }
+</style>
+</head>
+<body>
+<div class="wrap">
+
+  <h1>Comparação de Aplicativos de Filtro de Tela</h1>
+  <p class="subtitle">Dados aproximados com base em versões públicas disponíveis em junho de 2025.</p>
+
+  <table>
+    <thead>
+      <tr>
+        <th>Funcionalidade</th>
+        <th class="col-eyezen">
+          <span class="app-name">EyeZen</span>
+          <span class="app-sub">v2 · Windows</span>
+          <span class="badge-highlight">gratuito</span>
+        </th>
+        <th class="col-flux">
+          <span class="app-name">f.lux</span>
+          <span class="app-sub">Win / Mac / Linux</span>
+        </th>
+        <th class="col-nl">
+          <span class="app-name">Night Light</span>
+          <span class="app-sub">Windows 10/11</span>
+        </th>
+        <th class="col-iris">
+          <span class="app-name">Iris</span>
+          <span class="app-sub">Win / Mac / Linux</span>
+        </th>
+      </tr>
+    </thead>
+    <tbody>
+
+      <!-- CUSTO -->
+      <tr class="section-row"><td colspan="5">Custo &amp; Acesso</td></tr>
+
+      <tr>
+        <td>Preço</td>
+        <td class="col-eyezen"><span class="val-best">Gratuito</span></td>
+        <td><span class="val">Gratuito</span></td>
+        <td><span class="val">Gratuito</span></td>
+        <td><span class="part">Freemium · ~$15/ano</span></td>
+      </tr>
+      <tr>
+        <td>Tamanho do executável</td>
+        <td class="col-eyezen"><span class="val-best">3.54 MB</span></td>
+        <td><span class="val">~1 MB</span></td>
+        <td><span class="val-dim">Nativo (built-in)</span></td>
+        <td><span class="val-dim">~50 MB</span></td>
+      </tr>
+      <tr>
+        <td>Código aberto</td>
+        <td class="col-eyezen"><span class="yes">✓</span></td>
+        <td><span class="no">✗</span></td>
+        <td><span class="no">✗</span></td>
+        <td><span class="no">✗</span></td>
+      </tr>
+      <tr>
+        <td>Instalação necessária</td>
+        <td class="col-eyezen"><span class="val-best">Não · .exe portátil</span></td>
+        <td><span class="val-dim">Sim</span></td>
+        <td><span class="val-dim">Nativo</span></td>
+        <td><span class="val-dim">Sim</span></td>
+      </tr>
+
+      <!-- FILTROS -->
+      <tr class="section-row"><td colspan="5">Filtros &amp; Modos</td></tr>
+
+      <tr>
+        <td>Filtros preset customizáveis</td>
+        <td class="col-eyezen"><span class="yes">✓</span> <span style="color:#555;font-size:11px">16 modos</span></td>
+        <td><span class="part">Parcial</span></td>
+        <td><span class="no">✗</span></td>
+        <td><span class="yes">✓</span></td>
+      </tr>
+      <tr>
+        <td>Ajuste de intensidade (slider)</td>
+        <td class="col-eyezen"><span class="yes">✓</span> <span style="color:#555;font-size:11px">0–150%</span></td>
+        <td><span class="yes">✓</span></td>
+        <td><span class="part">Básico</span></td>
+        <td><span class="yes">✓</span></td>
+      </tr>
+      <tr>
+        <td>Matrizes de cor (efeitos avançados)</td>
+        <td class="col-eyezen"><span class="yes">✓</span> <span style="color:#555;font-size:11px">5×5 via Mag API</span></td>
+        <td><span class="no">✗</span></td>
+        <td><span class="no">✗</span></td>
+        <td><span class="yes">✓</span></td>
+      </tr>
+      <tr>
+        <td>Saturação / tom independente</td>
+        <td class="col-eyezen"><span class="yes">✓</span></td>
+        <td><span class="no">✗</span></td>
+        <td><span class="no">✗</span></td>
+        <td><span class="yes">✓</span></td>
+      </tr>
+      <tr>
+        <td>Modos para daltonismo</td>
+        <td class="col-eyezen"><span class="part">Planejado</span></td>
+        <td><span class="no">✗</span></td>
+        <td><span class="no">✗</span></td>
+        <td><span class="yes">✓</span></td>
+      </tr>
+
+      <!-- AUTOMAÇÃO -->
+      <tr class="section-row"><td colspan="5">Automação</td></tr>
+
+      <tr>
+        <td>Agendamento por horário</td>
+        <td class="col-eyezen"><span class="yes">✓</span> <span style="color:#555;font-size:11px">por intervalo</span></td>
+        <td><span class="yes">✓</span></td>
+        <td><span class="yes">✓</span></td>
+        <td><span class="yes">✓</span></td>
+      </tr>
+      <tr>
+        <td>Automação por localização (GPS)</td>
+        <td class="col-eyezen"><span class="no">✗</span></td>
+        <td><span class="yes">✓</span></td>
+        <td><span class="yes">✓</span></td>
+        <td><span class="yes">✓</span></td>
+      </tr>
+      <tr>
+        <td>Filtro por app em foco</td>
+        <td class="col-eyezen"><span class="yes">✓</span> <span style="color:#00d282;font-size:10px;font-weight:700">exclusivo</span></td>
+        <td><span class="no">✗</span></td>
+        <td><span class="no">✗</span></td>
+        <td><span class="no">✗</span></td>
+      </tr>
+      <tr>
+        <td>Transição suave entre filtros</td>
+        <td class="col-eyezen"><span class="yes">✓</span> <span style="color:#555;font-size:11px">1.4s ease-out</span></td>
+        <td><span class="yes">✓</span></td>
+        <td><span class="part">Básico</span></td>
+        <td><span class="yes">✓</span></td>
+      </tr>
+
+      <!-- INTERFACE -->
+      <tr class="section-row"><td colspan="5">Interface &amp; Controle</td></tr>
+
+      <tr>
+        <td>Atalhos de teclado globais</td>
+        <td class="col-eyezen"><span class="yes">✓</span> <span style="color:#555;font-size:11px">Ctrl+Alt+1–9</span></td>
+        <td><span class="part">Limitado</span></td>
+        <td><span class="no">✗</span></td>
+        <td><span class="yes">✓</span></td>
+      </tr>
+      <tr>
+        <td>Ícone na bandeja do sistema</td>
+        <td class="col-eyezen"><span class="yes">✓</span></td>
+        <td><span class="yes">✓</span></td>
+        <td><span class="no">✗</span></td>
+        <td><span class="yes">✓</span></td>
+      </tr>
+      <tr>
+        <td>Sem instalação (portátil)</td>
+        <td class="col-eyezen"><span class="yes">✓</span></td>
+        <td><span class="no">✗</span></td>
+        <td><span class="no">✗</span></td>
+        <td><span class="no">✗</span></td>
+      </tr>
+
+      <!-- COMPATIBILIDADE -->
+      <tr class="section-row"><td colspan="5">Compatibilidade</td></tr>
+
+      <tr>
+        <td>Windows</td>
+        <td class="col-eyezen"><span class="yes">✓</span></td>
+        <td><span class="yes">✓</span></td>
+        <td><span class="yes">✓</span></td>
+        <td><span class="yes">✓</span></td>
+      </tr>
+      <tr>
+        <td>macOS</td>
+        <td class="col-eyezen"><span class="no">✗</span></td>
+        <td><span class="yes">✓</span></td>
+        <td><span class="no">✗</span></td>
+        <td><span class="yes">✓</span></td>
+      </tr>
+      <tr>
+        <td>Linux</td>
+        <td class="col-eyezen"><span class="no">✗</span></td>
+        <td><span class="yes">✓</span></td>
+        <td><span class="no">✗</span></td>
+        <td><span class="yes">✓</span></td>
+      </tr>
+      <tr>
+        <td>Múltiplos monitores</td>
+        <td class="col-eyezen"><span class="part">Parcial</span></td>
+        <td><span class="yes">✓</span></td>
+        <td><span class="yes">✓</span></td>
+        <td><span class="yes">✓</span></td>
+      </tr>
+
+    </tbody>
+  </table>
+
+  <div class="legend">
+    <span><span class="yes" style="font-size:13px">✓</span> Suportado</span>
+    <span><span class="no" style="font-size:13px">✗</span> Não suportado</span>
+    <span><span class="part" style="font-size:12px">Parcial</span> Suporte limitado</span>
+    <span style="color:#333">Dados referentes a junho de 2025.</span>
+  </div>
+
+</div>
+</body>
+</html>

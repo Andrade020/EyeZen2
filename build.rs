@@ -5,8 +5,8 @@ fn main() {
         res.set("FileDescription", "EyeZen - Filtros de Conforto Visual");
         res.set("ProductName", "EyeZen");
         res.set("LegalCopyright", "Copyright 2024");
-        res.set("FileVersion", "2.0.0.0");
-        res.set("ProductVersion", "2.0.0.0");
+        res.set("FileVersion", "2.1.0.0");
+        res.set("ProductVersion", "2.1.0.0");
         res.compile().expect("winres compile");
     }
 }

@@ -10,12 +10,14 @@ use serde::{Deserialize, Serialize};
 use std::{
     collections::HashMap,
     sync::mpsc::{channel, Receiver},
-    time::{Duration, Instant},
+    time::{Duration, Instant, SystemTime, UNIX_EPOCH},
 };
 use tray_icon::{
     menu::{CheckMenuItem, Menu, MenuEvent, MenuItem, PredefinedMenuItem},
     TrayIcon, TrayIconBuilder,
 };
+
+const LOGO_RGBA: &[u8] = include_bytes!("../assets/logo_96.rgba");
 
 // ─── Filtros ─────────────────────────────────────────────────────────────────
 //
@@ -29,6 +31,22 @@ enum FilterKind {
     ToneMap { r: f64, g: f64, b: f64, scale: f64, lift: f64 },
     /// Usa MagSetFullscreenColorEffect — sem restrição de ganho mínimo
     ColorMatrix { matrix: [f32; 25] },
+    /// Rotação de matiz contínua, recalculada a cada quadro — Psicodélico
+    HueCycle,
+    /// Matriz de cor aleatória sorteada uma vez, ao selecionar — Tubbies
+    Chaotic,
+    /// Alterna claro/escuro numa frequência fixa — Sandman. Só pode ser
+    /// ativado através do fluxo de confirmação em `draw_beta` (nunca direto
+    /// por agenda ou regra de app — ver os `continue` em IDX_BETA_START).
+    Strobe,
+    /// Overlay transparente com ruído estático — Chiado (efeito TV antiga).
+    /// Não mexe na cor da tela, sobrepõe uma segunda janela por cima.
+    Noise,
+    /// Curva de tom tipo ToneMap + overlay transparente de grão de papel,
+    /// gerado uma vez (estático, não redesenha a cada quadro como o Chiado).
+    PaperGrain { r: f64, g: f64, b: f64, scale: f64, lift: f64 },
+    /// Overlay escuro com um "buraco" claro seguindo o cursor — Lanterna.
+    Spotlight,
 }
 
 struct FilterDef {
@@ -76,12 +94,32 @@ fn all_filters() -> Vec<FilterDef> {
         FilterDef { name: "Kodak Portra",   emoji: "\u{1F4F7}", kind: FilterKind::Linear { r: 1.06, g: 0.97, b: 0.87 }, color: Color32::from_rgb(130, 90, 50) },
         FilterDef { name: "Oceano",         emoji: "\u{1F30A}", kind: FilterKind::Linear { r: 0.90, g: 0.97, b: 1.08 }, color: Color32::from_rgb(2,   80,130) },
         FilterDef { name: "Modo Retro",     emoji: "\u{1F4FA}", kind: FilterKind::ToneMap { r: 1.02, g: 0.96, b: 0.72, scale: 0.85, lift: 0.08 }, color: Color32::from_rgb(150, 90, 20) },
+        // idx 17-23 = Versão de Teste (experimental)
+        FilterDef { name: "Psicodelico", emoji: "\u{1F300}", kind: FilterKind::HueCycle, color: Color32::from_rgb(180, 0, 210) },
+        FilterDef { name: "Tubbies",     emoji: "\u{1F9F8}", kind: FilterKind::Chaotic,  color: Color32::from_rgb(255, 130, 0) },
+        FilterDef { name: "Sandman",     emoji: "\u{1F4A4}", kind: FilterKind::Strobe,   color: Color32::from_rgb(210, 20, 60) },
+        FilterDef { name: "Chiado",      emoji: "\u{1F4FC}", kind: FilterKind::Noise,    color: Color32::from_rgb(90, 90, 100) },
+        FilterDef { name: "Papel", emoji: "\u{1F4C4}", kind: FilterKind::PaperGrain {
+            r: 1.00, g: 0.97, b: 0.90, scale: 0.88, lift: 0.10,
+        }, color: Color32::from_rgb(190, 175, 145) },
+        // Ultradark: escala bem abaixo do piso de ~50% que o gamma ramp aceita,
+        // mas ainda enxergável (15%, não 2% — isso ficou escuro demais na prática).
+        // `compute_matrix_at` sempre garante um piso mínimo de brilho por canal —
+        // nunca chega a preto absoluto, por mais que suba a intensidade.
+        FilterDef { name: "Ultradark", emoji: "\u{1F311}", kind: FilterKind::ColorMatrix { matrix: [
+            0.15,0.,0.,0.,0., 0.,0.15,0.,0.,0., 0.,0.,0.15,0.,0., 0.,0.,0.,1.,0., 0.,0.,0.,0.,1.,
+        ]}, color: Color32::from_rgb(25, 25, 32) },
+        FilterDef { name: "Lanterna", emoji: "\u{1F526}", kind: FilterKind::Spotlight, color: Color32::from_rgb(40, 40, 30) },
     ]
 }
 
 const IDX_DESATIVAR:    usize = 6;
 const IDX_OUTROS_START: usize = 7;
+const IDX_BETA_START:   usize = 17;
+const IDX_SANDMAN:      usize = 19;
 const TRANS_DURATION:   Duration = Duration::from_millis(1400);
+const MIN_WIN_H: f32 = 420.0;
+const MAX_WIN_H: f32 = 760.0;
 
 // ─── Ramp helpers ────────────────────────────────────────────────────────────
 
@@ -102,7 +140,7 @@ fn compute_ramp(kind: &FilterKind, intensity: f64) -> [u16; 768] {
                 ramp[512+i] = (i as f64*257.0*bi).clamp(0.0,65535.0) as u16;
             }
         }
-        FilterKind::ToneMap { r, g, b, scale, lift } => {
+        FilterKind::ToneMap { r, g, b, scale, lift } | FilterKind::PaperGrain { r, g, b, scale, lift } => {
             let (ri,gi,bi) = (1.0+(r-1.0)*intensity, 1.0+(g-1.0)*intensity, 1.0+(b-1.0)*intensity);
             let (si, li)   = (1.0+(scale-1.0)*intensity, lift*intensity);
             for i in 0..256usize {
@@ -112,7 +150,8 @@ fn compute_ramp(kind: &FilterKind, intensity: f64) -> [u16; 768] {
                 ramp[512+i] = (t*bi*65535.0).clamp(0.0,65535.0) as u16;
             }
         }
-        FilterKind::ColorMatrix { .. } => return neutral_ramp(),
+        FilterKind::ColorMatrix { .. } | FilterKind::HueCycle | FilterKind::Chaotic
+            | FilterKind::Strobe | FilterKind::Noise | FilterKind::Spotlight => return neutral_ramp(),
     }
     ramp
 }
@@ -121,7 +160,332 @@ fn compute_matrix_at(matrix: &[f32; 25], intensity: f64) -> [f32; 25] {
     let id: [f32; 25] = [1.,0.,0.,0.,0., 0.,1.,0.,0.,0., 0.,0.,1.,0.,0., 0.,0.,0.,1.,0., 0.,0.,0.,0.,1.];
     let mut m = [0f32; 25];
     for i in 0..25 { m[i] = id[i] + (matrix[i]-id[i]) * intensity as f32; }
+    // Piso de segurança: o ganho R/G/B nunca fica negativo (o que inverteria o
+    // canal) nem chega a zero absoluto — nenhum filtro, nem em 150% de
+    // intensidade, apaga a tela por completo (ver Ultradark).
+    for &i in &[0usize, 6, 12] { m[i] = m[i].max(0.05); }
     m
+}
+
+// ─── Filtros experimentais (Psicodélico / Tubbies / Sandman) ─────────────────
+//
+// A Magnification API só aceita uma matriz de cor 5×5 aplicada uniformemente
+// à tela inteira — não há acesso à posição do pixel, então não dá pra desenhar
+// padrões espaciais (fractais de verdade). O que dá pra fazer: Psicodélico
+// recalcula uma rotação de matiz a cada quadro; Tubbies sorteia uma mistura
+// caótica de canais uma única vez, ao selecionar; Sandman alterna entre a
+// tela normal e um flash escuro numa frequência fixa.
+
+/// Matriz de rotação de matiz (preserva luminância), ângulo em radianos.
+fn hue_rotate_matrix(theta: f32) -> [f32; 25] {
+    let (s, c) = theta.sin_cos();
+    let a00 = 0.213 + c*0.787 - s*0.213;
+    let a01 = 0.715 - c*0.715 - s*0.715;
+    let a02 = 0.072 - c*0.072 + s*0.928;
+    let a10 = 0.213 - c*0.213 + s*0.143;
+    let a11 = 0.715 + c*0.285 + s*0.140;
+    let a12 = 0.072 - c*0.072 - s*0.283;
+    let a20 = 0.213 - c*0.213 - s*0.787;
+    let a21 = 0.715 - c*0.715 + s*0.715;
+    let a22 = 0.072 + c*0.928 + s*0.072;
+    let mut m = [0f32; 25];
+    m[0*5+0]=a00; m[0*5+1]=a10; m[0*5+2]=a20;
+    m[1*5+0]=a01; m[1*5+1]=a11; m[1*5+2]=a21;
+    m[2*5+0]=a02; m[2*5+1]=a12; m[2*5+2]=a22;
+    m[3*5+3]=1.0; m[4*5+4]=1.0;
+    m
+}
+
+fn xorshift(mut x: u64) -> u64 {
+    if x == 0 { x = 0x9E3779B97F4A7C15; }
+    x ^= x << 13; x ^= x >> 7; x ^= x << 17; x
+}
+
+fn next_unit(seed: &mut u64) -> f32 {
+    *seed = xorshift(*seed);
+    ((*seed >> 40) as f32) / (16777216.0) // 24 bits -> [0,1)
+}
+
+/// Mistura aleatória e pesada dos 3 canais entre si — cada saída (R/G/B) vira
+/// uma combinação caótica das 3 entradas, com coeficientes que podem passar de
+/// 1.0 ou ser negativos (estoura/inverte cores de propósito). Sorteada uma vez
+/// por seleção, não a cada quadro.
+fn chaotic_matrix(seed: &mut u64) -> [f32; 25] {
+    let mut m = [0f32; 25];
+    for out in 0..3 {
+        for inp in 0..3 { m[inp*5 + out] = -1.3 + next_unit(seed) * 2.9; }
+        m[4*5 + out] = -0.12 + next_unit(seed) * 0.24;
+    }
+    m[3*5+3] = 1.0; m[4*5+4] = 1.0;
+    m
+}
+
+/// Fundo do ciclo do estroboscópio (Sandman). `peak` 0..1 controla o quão escuro
+/// fica: 0 é só uma leve escurecida, 1 é preto quase total.
+fn strobe_dark_matrix(peak: f32) -> [f32; 25] {
+    let k = (1.0 - peak.clamp(0.0, 1.0) * 0.95).max(0.05);
+    [k,0.,0.,0.,0., 0.,k,0.,0.,0., 0.,0.,k,0.,0., 0.,0.,0.,1.,0., 0.,0.,0.,0.,1.]
+}
+
+fn lerp_matrix(a: &[f32; 25], b: &[f32; 25], t: f32) -> [f32; 25] {
+    let mut m = [0f32; 25];
+    for i in 0..25 { m[i] = a[i] + (b[i]-a[i]) * t; }
+    m
+}
+
+/// Curva de brilho do Sandman ao longo de um ciclo (fase 0..1). `smoothness` 0..1:
+/// perto de 0 é um flash rápido e estreito, perto de 1 é uma respiração suave
+/// (seno puro) entre claro e escuro — sem corte abrupto.
+fn strobe_pulse(phase: f32, smoothness: f32) -> f32 {
+    let sine = 0.5 - 0.5 * (phase * std::f32::consts::TAU).cos(); // 0..1, suave
+    let exponent = 1.0 + (1.0 - smoothness.clamp(0.0, 1.0)) * 24.0;
+    sine.max(0.0).powf(exponent)
+}
+
+// ─── Overlay (Chiado / Papel) ─────────────────────────────────────────────────
+//
+// Nem gamma ramp nem a Magnification API têm noção de posição de pixel, então
+// pra desenhar ruído/grão de verdade a única saída é uma segunda janela por
+// cima da tela. Primeira tentativa usou o sistema de viewport do egui
+// (`show_viewport_immediate`/`_deferred`) — falhou de duas formas diferentes:
+// o clique não atravessava (tela travada, sem dar pra interagir com nada), e
+// depois de corrigir isso, a transparência de verdade nunca funcionou (a
+// janela aparecia sólida/branca, cobrindo a tela com uma imagem parada) —
+// o backend OpenGL (glow) do eframe não compõe alpha de verdade com o DWM
+// pra viewports secundárias nesse setup.
+//
+// Solução: abandonar o egui pra essa parte e usar uma janela nativa do Windows
+// (`WS_EX_LAYERED`) atualizada via `UpdateLayeredWindow` — é o mecanismo GDI
+// clássico de transparência real por pixel, independente de OpenGL/DWM, usado
+// por overlays de verdade (ex.: launchers, HUDs). Roda numa thread própria,
+// dona da janela e do laço de mensagens do Windows.
+
+const NOISE_W: usize = 320;
+const NOISE_H: usize = 180;
+const PAPER_MAX_DIM: i32 = 1600;
+
+fn gen_noise_rgba(seed: &mut u64) -> Vec<u8> {
+    let mut buf = vec![0u8; NOISE_W * NOISE_H * 4];
+    for px in buf.chunks_exact_mut(4) {
+        *seed = xorshift(*seed);
+        let v = (*seed >> 24) as u8;
+        px[0] = v; px[1] = v; px[2] = v; px[3] = 55;
+    }
+    buf
+}
+
+fn gen_paper_grain_rgba(w: usize, h: usize, seed: &mut u64) -> Vec<u8> {
+    let mut buf = vec![0u8; w * h * 4];
+    for px in buf.chunks_exact_mut(4) {
+        *seed = xorshift(*seed);
+        let v = (*seed >> 24) as u8;
+        px[0] = 235; px[1] = 222; px[2] = 195;
+        px[3] = (v as u16 * 22 / 255) as u8;
+    }
+    buf
+}
+
+/// Amplia por vizinho-mais-próximo de `sw`×`sh` pra `dw`×`dh` (RGBA straight-alpha),
+/// e já converte pra BGRA com alpha pré-multiplicado — formato que `UpdateLayeredWindow`
+/// exige (`ULW_ALPHA`).
+fn rgba_to_bgra_premul_scaled(src: &[u8], sw: usize, sh: usize, dw: usize, dh: usize) -> Vec<u8> {
+    let mut out = vec![0u8; dw * dh * 4];
+    for y in 0..dh {
+        let sy = (y * sh / dh).min(sh.saturating_sub(1));
+        for x in 0..dw {
+            let sx = (x * sw / dw).min(sw.saturating_sub(1));
+            let si = (sy * sw + sx) * 4;
+            let di = (y * dw + x) * 4;
+            let (r, g, b, a) = (src[si] as u16, src[si+1] as u16, src[si+2] as u16, src[si+3] as u16);
+            out[di]   = (b * a / 255) as u8;
+            out[di+1] = (g * a / 255) as u8;
+            out[di+2] = (r * a / 255) as u8;
+            out[di+3] = a as u8;
+        }
+    }
+    out
+}
+
+#[cfg(windows)]
+fn virtual_screen_rect() -> (i32, i32, i32, i32) {
+    use winapi::um::winuser::{GetSystemMetrics, SM_XVIRTUALSCREEN, SM_YVIRTUALSCREEN, SM_CXVIRTUALSCREEN, SM_CYVIRTUALSCREEN};
+    unsafe {
+        (GetSystemMetrics(SM_XVIRTUALSCREEN), GetSystemMetrics(SM_YVIRTUALSCREEN),
+         GetSystemMetrics(SM_CXVIRTUALSCREEN), GetSystemMetrics(SM_CYVIRTUALSCREEN))
+    }
+}
+#[cfg(not(windows))]
+fn virtual_screen_rect() -> (i32, i32, i32, i32) { (0, 0, 1920, 1080) }
+
+#[cfg(windows)]
+fn cursor_pos() -> (i32, i32) {
+    use winapi::um::winuser::GetCursorPos;
+    use winapi::shared::windef::POINT;
+    unsafe {
+        let mut p: POINT = std::mem::zeroed();
+        if GetCursorPos(&mut p) != 0 { (p.x, p.y) } else { (0, 0) }
+    }
+}
+#[cfg(not(windows))]
+fn cursor_pos() -> (i32, i32) { (0, 0) }
+
+/// Máscara escura com um "buraco" claro ao redor do cursor (borda suave entre
+/// `inner` e `outer`, em pixels). BGRA pré-multiplicado — como a cor é sempre
+/// preta, o pré-multiplicado é sempre 0 nos três canais, só o alpha varia.
+fn gen_spotlight_bgra(cx: f32, cy: f32, w: i32, h: i32, inner: f32, outer: f32) -> Vec<u8> {
+    let (w, h) = (w.max(1) as usize, h.max(1) as usize);
+    let mut buf = vec![0u8; w * h * 4];
+    const DARK_ALPHA: f32 = 210.0;
+    for y in 0..h {
+        let dy = y as f32 - cy;
+        for x in 0..w {
+            let dx = x as f32 - cx;
+            let dist = (dx*dx + dy*dy).sqrt();
+            let t = ((dist - inner) / (outer - inner).max(1.0)).clamp(0.0, 1.0);
+            buf[(y*w+x)*4 + 3] = (t * DARK_ALPHA) as u8;
+        }
+    }
+    buf
+}
+
+enum OverlayMsg {
+    /// Mostra (ou atualiza) a janela com este retângulo + bitmap BGRA pré-multiplicado.
+    Show { x: i32, y: i32, w: i32, h: i32, bgra: Vec<u8> },
+    Hide,
+    Quit,
+}
+
+struct OverlayHandle {
+    tx: std::sync::mpsc::Sender<OverlayMsg>,
+}
+
+impl OverlayHandle {
+    fn show(&self, x: i32, y: i32, w: i32, h: i32, bgra: Vec<u8>) {
+        let _ = self.tx.send(OverlayMsg::Show { x, y, w, h, bgra });
+    }
+    fn hide(&self) { let _ = self.tx.send(OverlayMsg::Hide); }
+    fn quit(&self) { let _ = self.tx.send(OverlayMsg::Quit); }
+}
+
+#[cfg(windows)]
+mod overlay_win32 {
+    use super::OverlayMsg;
+    use std::sync::mpsc::Receiver;
+    use winapi::shared::minwindef::{LPARAM, LRESULT, UINT, WPARAM};
+    use winapi::shared::windef::{HWND, POINT, SIZE};
+    use winapi::um::libloaderapi::GetModuleHandleW;
+    use winapi::um::wingdi::{
+        CreateCompatibleDC, CreateDIBSection, DeleteDC, DeleteObject, SelectObject,
+        BITMAPINFO, BITMAPINFOHEADER, BI_RGB, DIB_RGB_COLORS, AC_SRC_OVER, AC_SRC_ALPHA, BLENDFUNCTION,
+    };
+    use winapi::um::winuser::{
+        CreateWindowExW, DefWindowProcW, DestroyWindow, DispatchMessageW, GetDC, PeekMessageW,
+        RegisterClassW, ReleaseDC, SetWindowPos, ShowWindow, TranslateMessage, UpdateLayeredWindow,
+        CW_USEDEFAULT, HWND_TOPMOST, MSG, PM_REMOVE, SWP_NOACTIVATE, SW_HIDE, ULW_ALPHA, WNDCLASSW,
+        WS_EX_LAYERED, WS_EX_NOACTIVATE, WS_EX_TOOLWINDOW, WS_EX_TOPMOST, WS_EX_TRANSPARENT, WS_POPUP,
+    };
+
+    unsafe extern "system" fn wnd_proc(hwnd: HWND, msg: UINT, wparam: WPARAM, lparam: LPARAM) -> LRESULT {
+        DefWindowProcW(hwnd, msg, wparam, lparam)
+    }
+
+    pub fn run(rx: Receiver<OverlayMsg>) {
+        unsafe {
+            let class_name: Vec<u16> = "EyeZenOverlayClass\0".encode_utf16().collect();
+            let hinstance = GetModuleHandleW(std::ptr::null());
+            let wc = WNDCLASSW {
+                style: 0,
+                lpfnWndProc: Some(wnd_proc),
+                cbClsExtra: 0,
+                cbWndExtra: 0,
+                hInstance: hinstance,
+                hIcon: std::ptr::null_mut(),
+                hCursor: std::ptr::null_mut(),
+                hbrBackground: std::ptr::null_mut(),
+                lpszMenuName: std::ptr::null(),
+                lpszClassName: class_name.as_ptr(),
+            };
+            RegisterClassW(&wc);
+
+            let hwnd = CreateWindowExW(
+                WS_EX_LAYERED | WS_EX_TRANSPARENT | WS_EX_TOPMOST | WS_EX_TOOLWINDOW | WS_EX_NOACTIVATE,
+                class_name.as_ptr(),
+                std::ptr::null(),
+                WS_POPUP,
+                CW_USEDEFAULT, CW_USEDEFAULT, 1, 1,
+                std::ptr::null_mut(), std::ptr::null_mut(), hinstance, std::ptr::null_mut(),
+            );
+            if hwnd.is_null() { return; }
+
+            loop {
+                let mut msg: MSG = std::mem::zeroed();
+                while PeekMessageW(&mut msg, std::ptr::null_mut(), 0, 0, PM_REMOVE) != 0 {
+                    TranslateMessage(&msg);
+                    DispatchMessageW(&msg);
+                }
+
+                match rx.recv_timeout(std::time::Duration::from_millis(30)) {
+                    Ok(OverlayMsg::Show { x, y, w, h, bgra }) => blit(hwnd, x, y, w, h, &bgra),
+                    Ok(OverlayMsg::Hide) => { ShowWindow(hwnd, SW_HIDE); }
+                    Ok(OverlayMsg::Quit) | Err(std::sync::mpsc::RecvTimeoutError::Disconnected) => {
+                        DestroyWindow(hwnd);
+                        break;
+                    }
+                    Err(std::sync::mpsc::RecvTimeoutError::Timeout) => {}
+                }
+            }
+        }
+    }
+
+    unsafe fn blit(hwnd: HWND, x: i32, y: i32, w: i32, h: i32, bgra: &[u8]) {
+        if w <= 0 || h <= 0 || bgra.len() < (w as usize * h as usize * 4) { return; }
+
+        SetWindowPos(hwnd, HWND_TOPMOST, x, y, w, h, SWP_NOACTIVATE);
+
+        let hdc_screen = GetDC(std::ptr::null_mut());
+        let hdc_mem = CreateCompatibleDC(hdc_screen);
+
+        let mut bmi: BITMAPINFO = std::mem::zeroed();
+        bmi.bmiHeader = BITMAPINFOHEADER {
+            biSize: std::mem::size_of::<BITMAPINFOHEADER>() as u32,
+            biWidth: w,
+            biHeight: -h, // top-down
+            biPlanes: 1,
+            biBitCount: 32,
+            biCompression: BI_RGB,
+            biSizeImage: 0, biXPelsPerMeter: 0, biYPelsPerMeter: 0, biClrUsed: 0, biClrImportant: 0,
+        };
+
+        let mut bits_ptr: *mut winapi::ctypes::c_void = std::ptr::null_mut();
+        let hbitmap = CreateDIBSection(hdc_mem, &bmi, DIB_RGB_COLORS, &mut bits_ptr, std::ptr::null_mut(), 0);
+        if !hbitmap.is_null() && !bits_ptr.is_null() {
+            std::ptr::copy_nonoverlapping(bgra.as_ptr(), bits_ptr as *mut u8, bgra.len());
+            let old = SelectObject(hdc_mem, hbitmap as _);
+
+            let mut size = SIZE { cx: w, cy: h };
+            let mut src_pt = POINT { x: 0, y: 0 };
+            let mut blend = BLENDFUNCTION { BlendOp: AC_SRC_OVER, BlendFlags: 0, SourceConstantAlpha: 255, AlphaFormat: AC_SRC_ALPHA };
+            UpdateLayeredWindow(hwnd, hdc_screen, std::ptr::null_mut(), &mut size, hdc_mem, &mut src_pt, 0, &mut blend, ULW_ALPHA);
+            ShowWindow(hwnd, 8 /*SW_SHOWNA*/);
+
+            SelectObject(hdc_mem, old);
+            DeleteObject(hbitmap as _);
+        }
+        DeleteDC(hdc_mem);
+        ReleaseDC(std::ptr::null_mut(), hdc_screen);
+    }
+}
+#[cfg(not(windows))]
+mod overlay_win32 {
+    use super::OverlayMsg;
+    use std::sync::mpsc::Receiver;
+    pub fn run(_rx: Receiver<OverlayMsg>) {}
+}
+
+fn spawn_overlay() -> OverlayHandle {
+    let (tx, rx) = std::sync::mpsc::channel::<OverlayMsg>();
+    std::thread::spawn(move || overlay_win32::run(rx));
+    OverlayHandle { tx }
 }
 
 #[cfg(windows)]
@@ -320,7 +684,26 @@ impl Transition {
 enum AppEvent { ApplyFilter(usize), ToggleInvertedGrayscale }
 
 #[derive(PartialEq)]
-enum Page { Main, Outros, Agenda, Apps }
+enum Page { Main, Outros, Agenda, Apps, Beta }
+
+// ─── Sandman (estroboscópio) ──────────────────────────────────────────────────
+//
+// Nunca ativa direto. Selecionar mostra um aviso; só depois de SANDMAN_WARN_SECS
+// segundos o botão de confirmar libera. Fica ativo até o usuário parar — clicando
+// em "Parar agora", em qualquer outro filtro, ou Ctrl+Alt+0. Frequência, suavidade
+// e o quão escuro fica o fundo (pico) são ajustáveis em tempo real, inclusive já
+// ativo. Frequência baixa (ex.: 1 ciclo a cada 5-7s) funciona como lembrete de
+// piscar — nada a ver com estroboscópio de verdade; o risco cresce junto com
+// frequência + pico + falta de suavidade, não é fixo em todo o intervalo.
+const SANDMAN_WARN_SECS:     u64 = 3;
+const SANDMAN_FREQ_MIN:      f64 = 0.1;
+const SANDMAN_FREQ_MAX:      f64 = 14.0;
+const SANDMAN_FREQ_DEFAULT:  f64 = 5.0;
+const SANDMAN_SMOOTH_DEFAULT: f64 = 0.6;
+const SANDMAN_PEAK_DEFAULT:  f64 = 1.0;
+
+#[derive(Clone, Copy, PartialEq)]
+enum SandmanState { Idle, Warning(Instant), Active(Instant) }
 
 // ─── Ícone bandeja ───────────────────────────────────────────────────────────
 
@@ -363,7 +746,21 @@ struct EyeZenApp {
     last_app_check:       Instant,
     app_rule_active:      bool,
     apps_page_input:      String,
+    anim_start:           Instant,
+    chaotic_matrix:       [f32; 25],
+    rng_state:            u64,
+    sandman_state:        SandmanState,
+    sandman_freq_hz:      f64,
+    sandman_smoothness:   f64,
+    sandman_peak:         f64,
+    overlay:              OverlayHandle,
+    paper_bgra:           Option<(Vec<u8>, i32, i32)>,
+    overlay_last_send:       Instant,
+    spotlight_radius:     f64,
+    last_spotlight_pos:   (i32, i32),
+    win_h:                f32,
     page:                 Page,
+    logo_texture:         egui::TextureHandle,
     rx:                   Receiver<AppEvent>,
     _tray:                TrayIcon,
     tray_items:           Vec<CheckMenuItem>,
@@ -385,6 +782,12 @@ impl EyeZenApp {
         vis.window_fill = Color32::from_rgb(22,22,28);
         vis.panel_fill  = Color32::from_rgb(22,22,28);
         cc.egui_ctx.set_visuals(vis);
+
+        let logo_texture = cc.egui_ctx.load_texture(
+            "logo",
+            egui::ColorImage::from_rgba_unmultiplied([96, 96], LOGO_RGBA),
+            egui::TextureOptions::LINEAR,
+        );
 
         let filters  = all_filters();
         let cfg      = load_config(filters.len());
@@ -408,7 +811,9 @@ impl EyeZenApp {
             let _ = menu.append(&item); tray_items.push(item);
         }
         let _ = menu.append(&PredefinedMenuItem::separator());
-        for (i, f) in filters[IDX_OUTROS_START..].iter().enumerate() {
+        // Filtros da "Versão de Teste" (idx >= IDX_BETA_START) ficam de fora do menu da bandeja
+        // de propósito — o Sandman só pode ser ativado pelo fluxo de confirmação na aba Beta.
+        for (i, f) in filters[IDX_OUTROS_START..IDX_BETA_START].iter().enumerate() {
             let idx = IDX_OUTROS_START+i;
             let item = CheckMenuItem::new(f.name, true, idx==current, None);
             let _ = menu.append(&item); tray_items.push(item);
@@ -442,7 +847,21 @@ impl EyeZenApp {
             last_manual_filter: current, last_foreground: String::new(),
             last_app_check: Instant::now(), app_rule_active: false,
             apps_page_input: String::new(),
+            anim_start: Instant::now(),
+            chaotic_matrix: [1.,0.,0.,0.,0., 0.,1.,0.,0.,0., 0.,0.,1.,0.,0., 0.,0.,0.,1.,0., 0.,0.,0.,0.,1.],
+            rng_state: SystemTime::now().duration_since(UNIX_EPOCH).map(|d| d.as_nanos() as u64).unwrap_or(0x2545F4914F6CDD1D),
+            sandman_state: SandmanState::Idle,
+            sandman_freq_hz: SANDMAN_FREQ_DEFAULT,
+            sandman_smoothness: SANDMAN_SMOOTH_DEFAULT,
+            sandman_peak: SANDMAN_PEAK_DEFAULT,
+            overlay: spawn_overlay(),
+            paper_bgra: None,
+            overlay_last_send: Instant::now(),
+            spotlight_radius: 160.0,
+            last_spotlight_pos: (i32::MIN, i32::MIN),
+            win_h: 540.0,
             page: Page::Main,
+            logo_texture,
             rx, _tray: tray, tray_items, tray_invert_item,
             exit_item_id, show_item_id, toast: None,
         }
@@ -464,24 +883,47 @@ impl EyeZenApp {
     }
 
     fn do_apply(&mut self, idx: usize, auto_label: Option<&str>, ctx: &egui::Context) {
+        // Usado pelo Psicodélico (fase da rotação) e pelo timeout de segurança
+        // do Chiado/Papel — marca "desde quando o filtro atual está selecionado".
+        self.anim_start = Instant::now();
         if self.inverted_grayscale || self.uses_mag_filter { mag_api::reset(); }
         if self.inverted_grayscale {
             self.inverted_grayscale = false;
             self.tray_invert_item.set_checked(false);
             let _ = self._tray.set_icon(Some(make_tray_icon(false)));
         }
-        let is_cm = matches!(self.filters[idx].kind, FilterKind::ColorMatrix{..});
-        if is_cm {
-            if let FilterKind::ColorMatrix { matrix } = &self.filters[idx].kind {
+        match &self.filters[idx].kind {
+            FilterKind::ColorMatrix { matrix } => {
                 reset_gamma(); mag_api::apply_matrix(&compute_matrix_at(matrix, self.intensity));
+                self.uses_mag_filter = true; self.transition = None; self.current_ramp = neutral_ramp();
             }
-            self.uses_mag_filter = true; self.transition = None; self.current_ramp = neutral_ramp();
-        } else {
-            let target = compute_ramp(&self.filters[idx].kind, self.intensity);
-            let from   = self.transition.as_ref().and_then(|t| t.sample()).unwrap_or(self.current_ramp);
-            self.transition = Some(Transition { from, to: target, start: Instant::now() });
-            if self.uses_mag_filter { reset_gamma(); }
-            self.uses_mag_filter = false;
+            FilterKind::HueCycle => {
+                reset_gamma();
+                self.uses_mag_filter = true; self.transition = None; self.current_ramp = neutral_ramp();
+            }
+            FilterKind::Chaotic => {
+                self.rng_state = xorshift(self.rng_state);
+                self.chaotic_matrix = chaotic_matrix(&mut self.rng_state);
+                reset_gamma(); mag_api::apply_matrix(&compute_matrix_at(&self.chaotic_matrix, self.intensity));
+                self.uses_mag_filter = true; self.transition = None; self.current_ramp = neutral_ramp();
+            }
+            FilterKind::Strobe => {
+                reset_gamma();
+                self.sandman_state = SandmanState::Active(Instant::now());
+                self.uses_mag_filter = true; self.transition = None; self.current_ramp = neutral_ramp();
+            }
+            _ => {
+                let target = compute_ramp(&self.filters[idx].kind, self.intensity);
+                let from   = self.transition.as_ref().and_then(|t| t.sample()).unwrap_or(self.current_ramp);
+                self.transition = Some(Transition { from, to: target, start: Instant::now() });
+                if self.uses_mag_filter { reset_gamma(); }
+                self.uses_mag_filter = false;
+            }
+        }
+        // Sai do Chiado/Papel pra qualquer outro filtro: fecha a janela-overlay.
+        if !matches!(self.filters[idx].kind, FilterKind::Noise | FilterKind::PaperGrain{..} | FilterKind::Spotlight) {
+            self.overlay.hide();
+            self.paper_bgra = None;
         }
         for (i, item) in self.tray_items.iter().enumerate() { item.set_checked(i==idx); }
         let _ = self._tray.set_tooltip(Some(tooltip_for(idx, false, &self.filters)));
@@ -498,20 +940,85 @@ impl EyeZenApp {
     fn reapply_intensity(&mut self) {
         self.transition = None;
         if self.inverted_grayscale { return; }
-        if matches!(self.filters[self.current].kind, FilterKind::ColorMatrix{..}) {
-            if let FilterKind::ColorMatrix { matrix } = &self.filters[self.current].kind {
+        match &self.filters[self.current].kind {
+            FilterKind::ColorMatrix { matrix } => {
                 mag_api::apply_matrix(&compute_matrix_at(matrix, self.intensity));
             }
-        } else {
-            let ramp = compute_ramp(&self.filters[self.current].kind, self.intensity);
-            set_gamma_ramp(&ramp); self.current_ramp = ramp;
+            FilterKind::Chaotic => {
+                mag_api::apply_matrix(&compute_matrix_at(&self.chaotic_matrix, self.intensity));
+            }
+            // A matriz é recalculada todo quadro em `update`, que já lê `self.intensity` atual.
+            FilterKind::HueCycle | FilterKind::Strobe => {}
+            _ => {
+                let ramp = compute_ramp(&self.filters[self.current].kind, self.intensity);
+                set_gamma_ramp(&ramp); self.current_ramp = ramp;
+            }
         }
+    }
+
+    /// Chiado: gera ruído novo (baixa resolução) e manda pra thread do overlay
+    /// a cada ~120ms — ela amplia e converte pra BGRA pré-multiplicado e faz o
+    /// blit via `UpdateLayeredWindow` (transparência real, fora do egui).
+    fn render_noise_overlay(&mut self, ctx: &egui::Context) {
+        if self.overlay_last_send.elapsed() > Duration::from_millis(120) {
+            self.overlay_last_send = Instant::now();
+            let (vx, vy, vw, vh) = virtual_screen_rect();
+            self.rng_state = xorshift(self.rng_state);
+            let small = gen_noise_rgba(&mut self.rng_state);
+            let bgra = rgba_to_bgra_premul_scaled(&small, NOISE_W, NOISE_H, vw as usize, vh as usize);
+            self.overlay.show(vx, vy, vw, vh, bgra);
+        }
+        ctx.request_repaint_after(Duration::from_millis(60));
+    }
+
+    /// Papel: gera o grão uma vez (na primeira ativação), guarda o BGRA já
+    /// convertido, e só reenvia esse mesmo buffer pra thread do overlay depois
+    /// — sem regenerar nada, bem mais barato que o Chiado.
+    fn render_paper_overlay(&mut self, ctx: &egui::Context) {
+        let (vx, vy, vw, vh) = virtual_screen_rect();
+        if self.paper_bgra.is_none() {
+            let scale = (PAPER_MAX_DIM as f32 / (vw.max(vh) as f32)).min(1.0);
+            let tw = ((vw as f32 * scale) as usize).max(64);
+            let th = ((vh as f32 * scale) as usize).max(64);
+            self.rng_state = xorshift(self.rng_state);
+            let small = gen_paper_grain_rgba(tw, th, &mut self.rng_state);
+            let bgra = rgba_to_bgra_premul_scaled(&small, tw, th, vw as usize, vh as usize);
+            self.paper_bgra = Some((bgra, vw, vh));
+            self.overlay.show(vx, vy, vw, vh, self.paper_bgra.as_ref().unwrap().0.clone());
+        }
+        // Textura estática — só reafirma a janela de vez em quando, sem reconverter nada.
+        if self.overlay_last_send.elapsed() > Duration::from_secs(2) {
+            self.overlay_last_send = Instant::now();
+            if let Some((bgra, w, h)) = &self.paper_bgra {
+                self.overlay.show(vx, vy, *w, *h, bgra.clone());
+            }
+        }
+        ctx.request_repaint_after(Duration::from_millis(500));
+    }
+
+    /// Lanterna: escurece a tela toda com um "buraco" claro seguindo o cursor.
+    /// Só refaz a máscara se o mouse realmente se moveu desde o último envio —
+    /// parado, custa zero; em movimento, atualiza a ~25fps.
+    fn render_spotlight_overlay(&mut self, ctx: &egui::Context) {
+        let (cx, cy) = cursor_pos();
+        let moved = (cx - self.last_spotlight_pos.0).abs() > 1 || (cy - self.last_spotlight_pos.1).abs() > 1;
+        if moved && self.overlay_last_send.elapsed() > Duration::from_millis(40) {
+            self.overlay_last_send = Instant::now();
+            self.last_spotlight_pos = (cx, cy);
+            let (vx, vy, vw, vh) = virtual_screen_rect();
+            let inner = self.spotlight_radius as f32;
+            let outer = inner + 90.0;
+            let bgra = gen_spotlight_bgra((cx - vx) as f32, (cy - vy) as f32, vw, vh, inner, outer);
+            self.overlay.show(vx, vy, vw, vh, bgra);
+        }
+        ctx.request_repaint_after(Duration::from_millis(30));
     }
 
     fn toggle_inv_gray(&mut self, ctx: &egui::Context) {
         self.inverted_grayscale = !self.inverted_grayscale;
         if self.inverted_grayscale {
             self.transition = None; reset_gamma(); self.uses_mag_filter = false;
+            self.overlay.hide(); self.paper_bgra = None;
             for (i, item) in self.tray_items.iter().enumerate() { item.set_checked(i==IDX_DESATIVAR); }
             self.current = IDX_DESATIVAR; self.current_ramp = neutral_ramp();
             mag_api::apply_inv_gray();
@@ -554,6 +1061,46 @@ fn filter_btn(ui: &mut egui::Ui, label: &str, active: bool, color: Color32, widt
     let text_c = if active { Color32::WHITE } else { Color32::from_gray(190) };
     ui.add(egui::Button::new(RichText::new(label).size(13.0).color(text_c))
         .fill(fill).stroke(stroke).min_size(Vec2::new(width,36.0))).clicked()
+}
+
+fn shade(c: Color32, factor: f32) -> Color32 {
+    Color32::from_rgb(
+        (c.r() as f32 * factor).clamp(0.0, 255.0) as u8,
+        (c.g() as f32 * factor).clamp(0.0, 255.0) as u8,
+        (c.b() as f32 * factor).clamp(0.0, 255.0) as u8,
+    )
+}
+
+/// Botão com relevo (sombra + bisel), fica "apertado" enquanto pressionado.
+fn bevel_btn(ui: &mut egui::Ui, label: &str, base: Color32, width: f32, height: f32) -> bool {
+    let (rect, resp) = ui.allocate_exact_size(Vec2::new(width, height), egui::Sense::click());
+    if ui.is_rect_visible(rect) {
+        let painter = ui.painter();
+        let pressed = resp.is_pointer_button_down_on();
+        let hovered = resp.hovered();
+        let r = 7.0;
+
+        if !pressed {
+            painter.rect_filled(rect.translate(Vec2::new(0.0, 3.0)), r, Color32::from_rgba_premultiplied(0,0,0,90));
+        }
+        let btn_rect = rect.translate(Vec2::new(0.0, if pressed { 2.0 } else { 0.0 }));
+        let fill = if pressed { shade(base, 0.75) } else if hovered { shade(base, 1.15) } else { base };
+        painter.rect_filled(btn_rect, r, fill);
+
+        if !pressed {
+            painter.line_segment(
+                [btn_rect.left_top()+Vec2::new(r,1.2), btn_rect.right_top()+Vec2::new(-r,1.2)],
+                Stroke::new(1.2, Color32::from_rgba_premultiplied(255,255,255,70)),
+            );
+            painter.line_segment(
+                [btn_rect.left_bottom()+Vec2::new(r,-1.5), btn_rect.right_bottom()+Vec2::new(-r,-1.5)],
+                Stroke::new(1.5, Color32::from_rgba_premultiplied(0,0,0,110)),
+            );
+        }
+        painter.rect_stroke(btn_rect, r, Stroke::new(1.0, Color32::from_rgba_premultiplied(0,0,0,140)));
+        painter.text(btn_rect.center(), egui::Align2::CENTER_CENTER, label, egui::FontId::proportional(12.5), Color32::WHITE);
+    }
+    resp.clicked()
 }
 
 fn draw_intensity_slider(ui: &mut egui::Ui, intensity: f64, new_intensity: &mut Option<f64>) {
@@ -626,6 +1173,45 @@ impl App for EyeZenApp {
             match tr.sample() {
                 Some(ramp) => { set_gamma_ramp(&ramp); ctx.request_repaint_after(Duration::from_millis(16)); }
                 None => { let to = self.transition.take().unwrap().to; set_gamma_ramp(&to); self.current_ramp = to; }
+            }
+        }
+
+        // ── Psicodélico — rotação de matiz recalculada a cada quadro ──
+        if !self.inverted_grayscale {
+            if let FilterKind::HueCycle = &self.filters[self.current].kind {
+                let t = self.anim_start.elapsed().as_secs_f32();
+                mag_api::apply_matrix(&compute_matrix_at(&hue_rotate_matrix(t * 1.3), self.intensity));
+                ctx.request_repaint_after(Duration::from_millis(16));
+            }
+        }
+
+        // ── Chiado — overlay de ruído estático (fica ligado até o usuário desligar) ──
+        if !self.inverted_grayscale && matches!(self.filters[self.current].kind, FilterKind::Noise) {
+            self.render_noise_overlay(ctx);
+        }
+
+        // ── Papel — overlay de grão estático (fica ligado até o usuário desligar) ──
+        if !self.inverted_grayscale && matches!(self.filters[self.current].kind, FilterKind::PaperGrain{..}) {
+            self.render_paper_overlay(ctx);
+        }
+
+        // ── Lanterna — máscara escura seguindo o cursor ──
+        if !self.inverted_grayscale && matches!(self.filters[self.current].kind, FilterKind::Spotlight) {
+            self.render_spotlight_overlay(ctx);
+        }
+
+        // ── Sandman — oscila claro/escuro até o usuário parar ──
+        if !self.inverted_grayscale {
+            if let FilterKind::Strobe = &self.filters[self.current].kind {
+                if let SandmanState::Active(started) = self.sandman_state {
+                    const IDENTITY: [f32;25] = [1.,0.,0.,0.,0., 0.,1.,0.,0.,0., 0.,0.,1.,0.,0., 0.,0.,0.,1.,0., 0.,0.,0.,0.,1.];
+                    let phase = (started.elapsed().as_secs_f32() * self.sandman_freq_hz as f32).fract();
+                    let t = strobe_pulse(phase, self.sandman_smoothness as f32);
+                    let dark = strobe_dark_matrix(self.sandman_peak as f32);
+                    let base = lerp_matrix(&IDENTITY, &dark, t);
+                    mag_api::apply_matrix(&base);
+                    ctx.request_repaint_after(Duration::from_millis(8));
+                }
             }
         }
 
@@ -710,20 +1296,42 @@ impl App for EyeZenApp {
         let mut go_main                    = false;
         let mut go_agenda                  = false;
         let mut go_apps                    = false;
+        let mut go_beta                    = false;
+        let mut sandman_warn               = false;
+        let mut sandman_cancel             = false;
+        let mut new_sandman_freq:   Option<f64> = None;
+        let mut new_sandman_smooth: Option<f64> = None;
+        let mut new_sandman_peak:   Option<f64> = None;
+        let mut new_spotlight_radius: Option<f64> = None;
         let mut minimize                   = false;
         let mut quit                       = false;
         let mut new_intensity: Option<f64> = None;
 
+        let mut content_h: f32 = 0.0;
         egui::CentralPanel::default()
             .frame(egui::Frame::none().fill(BG).inner_margin(egui::Margin::same(16.0)))
             .show(ctx, |ui| {
-                match self.page {
-                    Page::Main   => draw_main(ui, self, &mut to_apply, &mut toggle_inv, &mut go_outros, &mut go_agenda, &mut go_apps, &mut minimize, &mut quit, &mut new_intensity),
-                    Page::Outros => draw_outros(ui, self, &mut to_apply, &mut go_main, &mut minimize, &mut quit, &mut new_intensity),
-                    Page::Agenda => draw_agenda(ui, self, &mut go_main),
-                    Page::Apps   => draw_apps(ui, self, &mut go_main),
-                }
+                let scroll = egui::ScrollArea::vertical().auto_shrink([false, true]).show(ui, |ui| {
+                    match self.page {
+                        Page::Main   => draw_main(ui, self, &mut to_apply, &mut toggle_inv, &mut go_outros, &mut go_agenda, &mut go_apps, &mut minimize, &mut quit, &mut new_intensity),
+                        Page::Outros => draw_outros(ui, self, &mut to_apply, &mut go_main, &mut go_beta, &mut minimize, &mut quit, &mut new_intensity),
+                        Page::Agenda => draw_agenda(ui, self, &mut go_main),
+                        Page::Apps   => draw_apps(ui, self, &mut go_main),
+                        Page::Beta   => draw_beta(ui, self, &mut to_apply, &mut go_outros, &mut sandman_warn, &mut sandman_cancel, &mut new_sandman_freq, &mut new_sandman_smooth, &mut new_sandman_peak, &mut new_spotlight_radius, &mut new_intensity, &mut minimize, &mut quit),
+                    }
+                });
+                content_h = scroll.content_size.y;
             });
+
+        // Janela sem redimensionamento manual: cresce pra caber o conteúdo da
+        // página mais alta já vista (com teto — além disso a ScrollArea cobre o
+        // resto), mas nunca encolhe ao trocar de página — uma vez que cresceu,
+        // fica desse tamanho.
+        let target_h = (content_h + 34.0).clamp(MIN_WIN_H, MAX_WIN_H);
+        if target_h > self.win_h + 1.0 {
+            self.win_h = target_h;
+            ctx.send_viewport_cmd(ViewportCommand::InnerSize(egui::vec2(440.0, target_h)));
+        }
 
         if ctx.input(|i| i.viewport().close_requested()) {
             ctx.send_viewport_cmd(ViewportCommand::CancelClose);
@@ -736,6 +1344,13 @@ impl App for EyeZenApp {
         if go_main                   { self.page = Page::Main; }
         if go_agenda                 { self.page = Page::Agenda; }
         if go_apps                   { self.page = Page::Apps; }
+        if go_beta                   { self.page = Page::Beta; }
+        if sandman_warn              { self.sandman_state = SandmanState::Warning(Instant::now()); }
+        if sandman_cancel            { self.sandman_state = SandmanState::Idle; }
+        if let Some(v) = new_sandman_freq   { self.sandman_freq_hz = v; }
+        if let Some(v) = new_sandman_smooth { self.sandman_smoothness = v; }
+        if let Some(v) = new_sandman_peak   { self.sandman_peak = v; }
+        if let Some(v) = new_spotlight_radius { self.spotlight_radius = v; }
         if minimize                  { ctx.send_viewport_cmd(ViewportCommand::Visible(false)); }
         if let Some(v) = new_intensity { self.intensity = v; self.reapply_intensity(); self.persist(); }
         if quit { reset_gamma(); mag_api::reset(); ctx.send_viewport_cmd(ViewportCommand::Close); }
@@ -743,6 +1358,7 @@ impl App for EyeZenApp {
 
     fn on_exit(&mut self, _gl: Option<&eframe::glow::Context>) {
         reset_gamma(); mag_api::reset(); mag_api::uninit();
+        self.overlay.quit();
     }
 }
 
@@ -756,7 +1372,9 @@ fn draw_main(
 ) {
     ui.set_min_width(420.0);
     ui.vertical_centered(|ui| {
-        ui.label(RichText::new("EyeZen").size(26.0).color(ACCENT).strong());
+        ui.add(egui::Image::new((app.logo_texture.id(), Vec2::new(44.0, 44.0))));
+        ui.add_space(2.0);
+        ui.label(RichText::new("EyeZen").size(26.0).color(Color32::WHITE).strong());
         ui.label(RichText::new("Filtros de Conforto Visual").size(11.0).color(Color32::from_gray(135)));
     });
     ui.add_space(8.0); ui.separator(); ui.add_space(6.0);
@@ -845,7 +1463,7 @@ fn draw_main(
 
 fn draw_outros(
     ui: &mut egui::Ui, app: &EyeZenApp,
-    to_apply: &mut Option<usize>, go_main: &mut bool,
+    to_apply: &mut Option<usize>, go_main: &mut bool, go_beta: &mut bool,
     minimize: &mut bool, quit: &mut bool, new_intensity: &mut Option<f64>,
 ) {
     ui.set_min_width(420.0);
@@ -870,6 +1488,169 @@ fn draw_outros(
         ui.add_space(3.0);
     }
     if !app.inverted_grayscale { draw_intensity_slider(ui, app.intensity, new_intensity); }
+
+    ui.add_space(6.0);
+    if ui.add(egui::Button::new(RichText::new("\u{1F9EA}  Vers\u{e3}o de Teste").size(12.5).color(Color32::from_rgb(230,200,255)))
+        .fill(Color32::from_rgb(60,20,80)).stroke(Stroke::new(1.0, Color32::from_rgb(150,80,190)))
+        .min_size(Vec2::new(ui.available_width(), 30.0))).clicked() { *go_beta = true; }
+
+    draw_toast_and_bottom(ui, app, minimize, quit);
+}
+
+// ─── Página Versão de Teste ──────────────────────────────────────────────────
+//
+// Filtros experimentais: a matriz de cor é recalculada a cada quadro em vez de
+// uma vez só, então custam mais CPU/GPU que os demais. Ficam de fora das
+// páginas normais de propósito.
+
+fn draw_beta(
+    ui: &mut egui::Ui, app: &EyeZenApp,
+    to_apply: &mut Option<usize>, go_outros: &mut bool,
+    sandman_warn: &mut bool, sandman_cancel: &mut bool,
+    new_sandman_freq: &mut Option<f64>, new_sandman_smooth: &mut Option<f64>, new_sandman_peak: &mut Option<f64>,
+    new_spotlight_radius: &mut Option<f64>,
+    new_intensity: &mut Option<f64>,
+    minimize: &mut bool, quit: &mut bool,
+) {
+    ui.set_min_width(420.0);
+    ui.horizontal(|ui| {
+        if ui.add(egui::Button::new(RichText::new("\u{2190} Voltar").size(13.0).color(Color32::WHITE))
+            .fill(Color32::from_rgb(20,70,55)).stroke(Stroke::new(1.5,ACCENT))).clicked() {
+            *go_outros = true;
+            if matches!(app.sandman_state, SandmanState::Warning(_)) { *sandman_cancel = true; }
+        }
+        ui.with_layout(egui::Layout::right_to_left(egui::Align::Center), |ui| {
+            ui.label(RichText::new("\u{1F9EA}  Vers\u{e3}o de Teste").size(14.0).color(Color32::from_rgb(230,200,255)).strong());
+        });
+    });
+    ui.add_space(6.0); ui.separator(); ui.add_space(6.0);
+
+    ui.label(RichText::new("Custam mais CPU: a cor da tela é recalculada continuamente, não uma vez só.")
+        .size(10.5).color(Color32::from_gray(140)));
+    ui.add_space(6.0);
+
+    // Sandman (IDX_SANDMAN) fica de fora dessa grade — tem fluxo próprio mais abaixo.
+    const GRID: [usize; 6] = [
+        IDX_BETA_START, IDX_BETA_START+1, IDX_BETA_START+3, IDX_BETA_START+4, IDX_BETA_START+5, IDX_BETA_START+6,
+    ];
+    for row in 0..3usize {
+        ui.columns(2, |cols| {
+            for col in 0..2 {
+                let idx = GRID[row*2 + col];
+                if idx >= app.filters.len() { continue; }
+                let f = &app.filters[idx]; let active = app.current==idx && !app.inverted_grayscale;
+                let w = cols[col].available_width();
+                if filter_btn(&mut cols[col], &format!("{}  {}", f.emoji, f.name), active, f.color, w) { *to_apply = Some(idx); }
+            }
+        });
+        ui.add_space(3.0);
+    }
+    ui.label(RichText::new("Tubbies sorteia uma mistura de cores nova a cada clique. Papel, Chiado e Lanterna usam uma janela-overlay por cima da tela, não a cor da tela em si. Ultradark nunca chega a preto absoluto.")
+        .size(9.5).color(Color32::from_gray(120)));
+    ui.label(RichText::new("Ficam ligados até você desligar. Se o clique não passar: Ctrl+Alt+0 desliga na hora, independe de clique.")
+        .size(9.5).color(Color32::from_rgb(210,160,100)));
+
+    let spotlight_active = app.current == IDX_BETA_START + 6 && !app.inverted_grayscale;
+    if spotlight_active {
+        ui.add_space(4.0);
+        ui.spacing_mut().slider_width = 250.0;
+        let mut radius = app.spotlight_radius;
+        if ui.add(egui::Slider::new(&mut radius, 40.0..=500.0).logarithmic(true).text("Raio da lanterna")).changed() {
+            *new_spotlight_radius = Some(radius);
+        }
+    }
+
+    if !app.inverted_grayscale { draw_intensity_slider(ui, app.intensity, new_intensity); }
+
+    ui.add_space(10.0); ui.separator(); ui.add_space(8.0);
+
+    let sandman_running = app.current == IDX_SANDMAN && !app.inverted_grayscale
+        && matches!(app.sandman_state, SandmanState::Active(_));
+
+    // Frequência, suavidade e pico ficam sempre visíveis — dá pra ajustar antes
+    // de ativar ou em tempo real enquanto o Sandman já está piscando. Log-scale
+    // e barra larga pra favorecer precisão nos valores baixos (é lá que ficam os
+    // ajustes mais úteis: lembrete de piscar, "tubo de imagem" etc.).
+    ui.spacing_mut().slider_width = 250.0;
+
+    let mut freq = app.sandman_freq_hz;
+    if ui.add(egui::Slider::new(&mut freq, SANDMAN_FREQ_MIN..=SANDMAN_FREQ_MAX)
+        .logarithmic(true).text("Frequência (Hz)")).changed() {
+        *new_sandman_freq = Some(freq);
+    }
+    ui.label(RichText::new(format!("1 ciclo a cada {:.1}s \u{2014} abaixo de ~0.3 Hz funciona mais como lembrete de piscar do que como estroboscópio.", 1.0 / freq.max(0.01)))
+        .size(9.0).color(Color32::from_gray(120)));
+    ui.add_space(4.0);
+    let mut smooth = app.sandman_smoothness;
+    if ui.add(egui::Slider::new(&mut smooth, 0.0..=1.0)
+        .logarithmic(true).smallest_positive(0.01).text("Suavidade")).changed() {
+        *new_sandman_smooth = Some(smooth);
+    }
+    let mut peak = app.sandman_peak;
+    if ui.add(egui::Slider::new(&mut peak, 0.0..=1.0)
+        .logarithmic(true).smallest_positive(0.01).text("Pico (escurid\u{e3}o)")).changed() {
+        *new_sandman_peak = Some(peak);
+    }
+    ui.label(RichText::new("Suavidade alta = respiração de luz suave, sem corte abrupto. Pico baixo = só uma leve escurecida, sem chegar ao preto.")
+        .size(9.0).color(Color32::from_gray(120)));
+    ui.add_space(6.0);
+
+    match app.sandman_state {
+        SandmanState::Active(_) if sandman_running => {
+            egui::Frame::none().fill(Color32::from_rgb(60,10,20)).rounding(6.0)
+                .inner_margin(egui::Margin::same(10.0)).show(ui, |ui| {
+                    ui.label(RichText::new("\u{1F4A4} Sandman ativo — fica ligado até você parar")
+                        .size(12.0).color(Color32::from_rgb(255,150,150)).strong());
+                    ui.add_space(4.0);
+                    if ui.add(egui::Button::new(RichText::new("Parar agora").size(12.0).color(Color32::WHITE))
+                        .fill(Color32::from_rgb(120,20,20)).min_size(Vec2::new(ui.available_width(), 28.0))).clicked() {
+                        *to_apply = Some(IDX_DESATIVAR);
+                        *sandman_cancel = true;
+                    }
+                });
+        }
+        SandmanState::Warning(started) => {
+            let remain = (SANDMAN_WARN_SECS as f32 - started.elapsed().as_secs_f32()).ceil().max(0.0) as u64;
+            let ready = remain == 0;
+            egui::Frame::none().fill(Color32::from_rgb(50,35,10)).rounding(6.0)
+                .inner_margin(egui::Margin::same(10.0)).show(ui, |ui| {
+                    ui.label(RichText::new("\u{26A0}  Antes de ativar o Sandman")
+                        .size(12.5).color(Color32::from_rgb(255,210,120)).strong());
+                    ui.add_space(3.0);
+                    ui.label(RichText::new(
+                        "Tela piscando entre ~3 e 60 Hz é gatilho documentado de crise em epilepsia \
+                         fotossensível. Não use durante chamada de vídeo, gravação ou compartilhamento \
+                         de tela, e não ative se você (ou alguém perto de você) tiver histórico de \
+                         epilepsia ou sensibilidade à luz. Fica ligado até você parar — clicando em \
+                         \"Parar agora\", em qualquer outro filtro, ou Ctrl+Alt+0.")
+                        .size(10.0).color(Color32::from_gray(180)));
+                    ui.add_space(6.0);
+                    ui.columns(2, |cols| {
+                        let w0 = cols[0].available_width();
+                        if cols[0].add(egui::Button::new(RichText::new("Cancelar").size(12.0).color(Color32::from_gray(210)))
+                            .fill(Color32::from_rgb(50,50,58)).min_size(Vec2::new(w0,28.0))).clicked() {
+                            *sandman_cancel = true;
+                        }
+                        let w1 = cols[1].available_width();
+                        let label = if ready { "Ativar mesmo assim".to_string() } else { format!("Aguarde {}s\u{2026}", remain) };
+                        let btn = egui::Button::new(RichText::new(label).size(12.0).color(if ready {Color32::WHITE} else {Color32::from_gray(140)}))
+                            .fill(if ready {Color32::from_rgb(150,20,20)} else {Color32::from_rgb(45,45,50)})
+                            .min_size(Vec2::new(w1,28.0));
+                        if cols[1].add_enabled(ready, btn).clicked() { *to_apply = Some(IDX_SANDMAN); }
+                    });
+                });
+            ui.ctx().request_repaint_after(Duration::from_millis(200));
+        }
+        _ => {
+            if ui.add(egui::Button::new(RichText::new("\u{1F4A4}  Sandman (estrobosc\u{f3}pio)").size(12.5).color(Color32::from_rgb(255,190,190)))
+                .fill(Color32::from_rgb(70,15,20)).stroke(Stroke::new(1.0, Color32::from_rgb(150,40,40)))
+                .min_size(Vec2::new(ui.available_width(), 30.0))).clicked() { *sandman_warn = true; }
+            ui.add_space(3.0);
+            ui.label(RichText::new("Pisca a tela — mostra um aviso antes de ativar de verdade.")
+                .size(9.5).color(Color32::from_gray(120)));
+        }
+    }
+
     draw_toast_and_bottom(ui, app, minimize, quit);
 }
 
@@ -956,6 +1737,7 @@ fn draw_agenda(ui: &mut egui::Ui, app: &mut EyeZenApp, go_main: &mut bool) {
                             .width(150.0)
                             .show_ui(ui, |ui| {
                                 for (fi, f) in app.filters.iter().enumerate() {
+                                    if fi >= IDX_BETA_START { continue; } // efeitos experimentais não entram na agenda
                                     let label = if fi == IDX_DESATIVAR {
                                         RichText::new(format!("\u{23FA} {}", f.name)).color(Color32::from_rgb(255,220,60)).strong()
                                     } else {
@@ -1088,6 +1870,7 @@ fn draw_apps(ui: &mut egui::Ui, app: &mut EyeZenApp, go_main: &mut bool) {
                                 .width(145.0)
                                 .show_ui(ui, |ui| {
                                     for (fi, fname) in filter_names.iter().enumerate() {
+                                        if fi >= IDX_BETA_START { continue; } // efeitos experimentais não entram em regras automáticas
                                         let emoji = filter_emojis.get(fi).copied().unwrap_or("");
                                         let label = if fi == IDX_DESATIVAR {
                                             RichText::new(format!("\u{23FA} {}", fname)).color(Color32::from_rgb(255,220,60)).strong()
@@ -1131,11 +1914,9 @@ fn draw_toast_and_bottom(ui: &mut egui::Ui, app: &EyeZenApp, minimize: &mut bool
     }
     ui.columns(2, |cols| {
         let w0 = cols[0].available_width();
-        if cols[0].add(egui::Button::new(RichText::new("Minimizar").size(12.0).color(Color32::from_gray(210)))
-            .fill(Color32::from_rgb(28,68,135)).min_size(Vec2::new(w0,28.0))).clicked() { *minimize = true; }
+        if bevel_btn(&mut cols[0], "Minimizar", Color32::from_rgb(32,78,150), w0, 30.0) { *minimize = true; }
         let w1 = cols[1].available_width();
-        if cols[1].add(egui::Button::new(RichText::new("Sair").size(12.0).color(Color32::WHITE))
-            .fill(Color32::from_rgb(145,22,22)).min_size(Vec2::new(w1,28.0))).clicked() { *quit = true; }
+        if bevel_btn(&mut cols[1], "Sair", Color32::from_rgb(160,26,26), w1, 30.0) { *quit = true; }
     });
 }
 

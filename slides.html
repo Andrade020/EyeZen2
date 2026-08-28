@@ -1,0 +1,739 @@
+<!DOCTYPE html>
+<html lang="pt-BR">
+<head>
+<meta charset="UTF-8">
+<title>EyeZen — Anatomia de um Filtro de Tela</title>
+<style>
+  :root {
+    --bg:        #0a0e14;
+    --panel:     #10161f;
+    --grid:      #1b2430;
+    --grid-soft: #141b25;
+    --accent:    #00d282;
+    --accent-dim:#0a5c3d;
+    --warm:      #ffb454;
+    --warm-dim:  #6b4a1e;
+    --danger:    #ff5c5c;
+    --ink:       #e9edf3;
+    --muted:     #7c8798;
+    --muted-2:   #4b5563;
+    --mono: 'Cascadia Code', 'Cascadia Mono', Consolas, 'SF Mono', 'JetBrains Mono', ui-monospace, monospace;
+    --sans: 'Segoe UI', -apple-system, BlinkMacSystemFont, system-ui, sans-serif;
+  }
+
+  * { margin: 0; padding: 0; box-sizing: border-box; }
+
+  html, body {
+    background: #000;
+    color: var(--ink);
+  }
+
+  @page { size: 1080px 1350px; margin: 0; }
+
+  @media screen {
+    body {
+      display: flex;
+      flex-direction: column;
+      align-items: center;
+      gap: 28px;
+      padding: 28px;
+    }
+    .slide { box-shadow: 0 24px 70px rgba(0,0,0,0.65); }
+  }
+
+  @media print {
+    body { padding: 0; }
+    .slide { break-after: page; page-break-after: always; box-shadow: none; }
+    .slide:last-child { break-after: auto; page-break-after: auto; }
+  }
+
+  .slide {
+    position: relative;
+    width: 1080px;
+    height: 1350px;
+    flex-shrink: 0;
+    background:
+      linear-gradient(var(--bg), var(--bg));
+    overflow: hidden;
+    display: flex;
+    flex-direction: column;
+    font-family: var(--sans);
+  }
+
+  /* Blueprint grid backdrop */
+  .slide::before {
+    content: "";
+    position: absolute;
+    inset: 0;
+    background-image:
+      linear-gradient(var(--grid-soft) 1px, transparent 1px),
+      linear-gradient(90deg, var(--grid-soft) 1px, transparent 1px);
+    background-size: 54px 54px;
+    opacity: 0.55;
+    pointer-events: none;
+  }
+
+  /* Corner registration ticks */
+  .ticks span {
+    position: absolute;
+    width: 22px; height: 22px;
+    border: 1.5px solid var(--muted-2);
+    opacity: 0.7;
+  }
+  .ticks .tl { top: 40px; left: 40px; border-right: none; border-bottom: none; }
+  .ticks .tr { top: 40px; right: 40px; border-left: none; border-bottom: none; }
+  .ticks .bl { bottom: 40px; left: 40px; border-right: none; border-top: none; }
+  .ticks .br { bottom: 40px; right: 40px; border-left: none; border-top: none; }
+
+  .content {
+    position: relative;
+    z-index: 2;
+    flex: 1;
+    display: flex;
+    flex-direction: column;
+    padding: 88px 80px 0 80px;
+  }
+
+  .eyebrow {
+    font-family: var(--mono);
+    font-size: 19px;
+    letter-spacing: 0.22em;
+    text-transform: uppercase;
+    color: var(--accent);
+    display: flex;
+    align-items: center;
+    gap: 14px;
+  }
+  .eyebrow::before {
+    content: "";
+    display: inline-block;
+    width: 26px; height: 1.5px;
+    background: var(--accent);
+  }
+
+  .headline {
+    font-family: var(--mono);
+    font-weight: 700;
+    font-size: 58px;
+    line-height: 1.12;
+    letter-spacing: -0.01em;
+    text-transform: uppercase;
+    color: var(--ink);
+    margin-top: 22px;
+    text-wrap: balance;
+    max-width: 880px;
+  }
+
+  .lede {
+    font-family: var(--sans);
+    font-size: 27px;
+    line-height: 1.55;
+    color: var(--muted);
+    margin-top: 26px;
+    max-width: 740px;
+  }
+  .lede strong { color: var(--ink); font-weight: 600; }
+  .lede em { color: var(--warm); font-style: normal; font-weight: 600; }
+
+  .footer {
+    position: relative;
+    z-index: 2;
+    padding: 0 80px 56px 80px;
+    display: flex;
+    align-items: baseline;
+    justify-content: space-between;
+    font-family: var(--mono);
+    font-size: 16px;
+    color: var(--muted-2);
+    letter-spacing: 0.08em;
+  }
+  .footer .brand { color: var(--muted); }
+  .footer .brand b { color: var(--accent); font-weight: 700; }
+
+  /* Schematic panel wrapper for diagrams */
+  .panel {
+    position: relative;
+    margin-top: 44px;
+    border: 1px solid var(--grid);
+    background: var(--panel);
+    border-radius: 3px;
+    flex: 1;
+    display: flex;
+    flex-direction: column;
+    min-height: 0;
+  }
+  .panel-label {
+    font-family: var(--mono);
+    font-size: 15px;
+    letter-spacing: 0.14em;
+    text-transform: uppercase;
+    color: var(--muted-2);
+    padding: 18px 22px 0 22px;
+  }
+  .panel-label b { color: var(--muted); }
+  .panel-body {
+    flex: 1;
+    display: flex;
+    align-items: center;
+    justify-content: center;
+    padding: 12px 28px 28px;
+    min-height: 0;
+  }
+  .panel-body svg { width: 100%; height: 100%; }
+
+  /* Stat tiles */
+  .stat-grid {
+    display: grid;
+    grid-template-columns: 1fr 1fr;
+    gap: 18px;
+    flex: 1;
+  }
+  .stat {
+    border: 1px solid var(--grid);
+    background: var(--panel);
+    border-radius: 3px;
+    padding: 30px 32px;
+    display: flex;
+    flex-direction: column;
+    justify-content: center;
+    gap: 10px;
+  }
+  .stat .num {
+    font-family: var(--mono);
+    font-weight: 700;
+    font-size: 56px;
+    color: var(--accent);
+    line-height: 1;
+    font-variant-numeric: tabular-nums;
+  }
+  .stat.warm .num { color: var(--warm); }
+  .stat .label {
+    font-family: var(--mono);
+    font-size: 16px;
+    letter-spacing: 0.04em;
+    color: var(--muted);
+    text-transform: uppercase;
+  }
+
+  code.inline {
+    font-family: var(--mono);
+    background: var(--grid-soft);
+    border: 1px solid var(--grid);
+    padding: 2px 8px;
+    border-radius: 3px;
+    color: var(--warm);
+    font-size: 0.88em;
+  }
+</style>
+</head>
+<body>
+
+<!-- ═══════════════════════════ SLIDE 01 — COVER ═══════════════════════════ -->
+<section class="slide">
+  <div class="ticks"><span class="tl"></span><span class="tr"></span><span class="bl"></span><span class="br"></span></div>
+  <div class="content" style="justify-content:center; padding-top:0;">
+    <div class="eyebrow">Documentação técnica · fig. 01/10</div>
+    <div style="font-family:var(--mono); font-weight:700; font-size:118px; line-height:0.98; letter-spacing:-0.02em; color:var(--ink); margin-top:34px;">
+      EYE<span style="color:var(--accent)">ZEN</span>
+    </div>
+    <div style="font-family:var(--mono); font-size:30px; color:var(--muted); margin-top:18px; letter-spacing:0.01em;">
+      anatomia de um filtro de tela
+    </div>
+    <div class="lede" style="margin-top:56px;">
+      Como um aplicativo de <strong>3.5 MB</strong> reconfigura, em tempo real, o sinal de cor que sai da sua GPU
+      antes de chegar ao monitor — sem instalar nada, sem travar nada.
+    </div>
+
+    <div class="panel" style="margin-top:64px; flex:none; height:360px;">
+      <div class="panel-body">
+        <svg viewBox="0 0 900 340">
+          <!-- monitor outline -->
+          <rect x="260" y="40" width="380" height="230" rx="6" fill="none" stroke="#2a3644" stroke-width="2"/>
+          <rect x="278" y="58" width="344" height="176" rx="2" fill="#0a0e14" stroke="#1b2430" stroke-width="1"/>
+          <rect x="400" y="270" width="100" height="14" fill="#2a3644"/>
+          <rect x="370" y="284" width="160" height="8" rx="4" fill="#1b2430"/>
+          <!-- three color bands inside screen -->
+          <rect x="278" y="58" width="114" height="176" fill="#ffb454" opacity="0.16"/>
+          <rect x="392" y="58" width="114" height="176" fill="#00d282" opacity="0.14"/>
+          <rect x="506" y="58" width="116" height="176" fill="#4d8fff" opacity="0.14"/>
+          <text x="335" y="150" text-anchor="middle" font-family="Cascadia Code, monospace" font-size="14" fill="#ffb454">R</text>
+          <text x="449" y="150" text-anchor="middle" font-family="Cascadia Code, monospace" font-size="14" fill="#00d282">G</text>
+          <text x="563" y="150" text-anchor="middle" font-family="Cascadia Code, monospace" font-size="14" fill="#4d8fff">B</text>
+          <!-- signal waves entering from left -->
+          <polyline points="40,150 90,120 130,180 170,110 210,160 250,150" fill="none" stroke="#00d282" stroke-width="2.5"/>
+          <text x="40" y="200" font-family="Cascadia Code, monospace" font-size="13" fill="#4b5563">sinal bruto</text>
+          <!-- arrow -->
+          <line x1="640" y1="150" x2="700" y2="150" stroke="#4b5563" stroke-width="2"/>
+          <polygon points="700,144 714,150 700,156" fill="#4b5563"/>
+          <text x="720" y="155" font-family="Cascadia Code, monospace" font-size="14" fill="#7c8798">olho</text>
+        </svg>
+      </div>
+    </div>
+  </div>
+  <div class="footer">
+    <span class="brand"><b>EYEZEN</b> — filtros de cor para windows</span>
+    <span>10 slides · leitura 3 min</span>
+  </div>
+</section>
+
+<!-- ═══════════════════════════ SLIDE 02 — PREMISE ═══════════════════════════ -->
+<section class="slide">
+  <div class="ticks"><span class="tl"></span><span class="tr"></span><span class="bl"></span><span class="br"></span></div>
+  <div class="content">
+    <div class="eyebrow">Fig. 02/10 — o problema</div>
+    <div class="headline">"modo noturno"<br>resolve 1 de 8 variáveis</div>
+    <div class="lede">
+      Todo filtro de tela popular ataca a <strong>temperatura de cor</strong>: deixa tudo mais quente à noite.
+      Mas o cansaço visual não vem só disso. Vem de <em>contraste</em>, <em>saturação</em>, <em>luminância relativa</em>
+      e da própria curva de resposta do seu monitor.
+    </div>
+
+    <div class="panel">
+      <div class="panel-label">esquemático — <b>espaço de variáveis do conforto visual</b></div>
+      <div class="panel-body">
+        <svg viewBox="0 0 900 460">
+          <!-- radial axes -->
+          <g stroke="#1b2430" stroke-width="1.5">
+            <line x1="450" y1="60" x2="450" y2="400"/>
+            <line x1="180" y1="120" x2="720" y2="340"/>
+            <line x1="180" y1="340" x2="720" y2="120"/>
+            <line x1="90" y1="230" x2="810" y2="230"/>
+          </g>
+          <circle cx="450" cy="230" r="170" fill="none" stroke="#1b2430" stroke-width="1"/>
+          <circle cx="450" cy="230" r="90"  fill="none" stroke="#1b2430" stroke-width="1"/>
+
+          <!-- the one axis every competitor covers -->
+          <line x1="450" y1="230" x2="450" y2="70" stroke="#ffb454" stroke-width="4"/>
+          <circle cx="450" cy="70" r="7" fill="#ffb454"/>
+          <text x="450" y="46" text-anchor="middle" font-family="Cascadia Code, monospace" font-size="18" fill="#ffb454">temperatura</text>
+
+          <!-- other axes, dim, unaddressed -->
+          <text x="695" y="128" text-anchor="start" font-family="Cascadia Code, monospace" font-size="16" fill="#7c8798">saturação</text>
+          <text x="695" y="345" text-anchor="start" font-family="Cascadia Code, monospace" font-size="16" fill="#7c8798">contraste</text>
+          <text x="100" y="128" text-anchor="end" font-family="Cascadia Code, monospace" font-size="16" fill="#7c8798">luminância</text>
+          <text x="100" y="345" text-anchor="end" font-family="Cascadia Code, monospace" font-size="16" fill="#7c8798">cross-channel</text>
+          <text x="450" y="424" text-anchor="middle" font-family="Cascadia Code, monospace" font-size="16" fill="#7c8798">adaptação temporal</text>
+
+          <text x="450" y="238" text-anchor="middle" font-family="Cascadia Code, monospace" font-size="14" fill="#4b5563">f.lux · night light</text>
+        </svg>
+      </div>
+    </div>
+  </div>
+  <div class="footer">
+    <span class="brand"><b>EYEZEN</b> — filtros de cor para windows</span>
+    <span>fig. 02/10</span>
+  </div>
+</section>
+
+<!-- ═══════════════════════════ SLIDE 03 — TWO ENGINES ═══════════════════════════ -->
+<section class="slide">
+  <div class="ticks"><span class="tl"></span><span class="tr"></span><span class="bl"></span><span class="br"></span></div>
+  <div class="content">
+    <div class="eyebrow">Fig. 03/10 — arquitetura</div>
+    <div class="headline">por baixo do capô,<br>dois motores distintos</div>
+    <div class="lede">
+      O EyeZen decide, filtro a filtro, qual das duas APIs do Windows vai processar aquele pixel.
+      Um ajuste de temperatura passa por um caminho. Um efeito com mistura entre canais passa por outro.
+    </div>
+
+    <div class="panel">
+      <div class="panel-label">esquemático — <b>pipeline de renderização</b></div>
+      <div class="panel-body">
+        <svg viewBox="0 0 940 420">
+          <!-- pixel source -->
+          <rect x="20" y="180" width="130" height="60" rx="3" fill="none" stroke="#2a3644" stroke-width="1.5"/>
+          <text x="85" y="216" text-anchor="middle" font-family="Cascadia Code, monospace" font-size="16" fill="#e9edf3">GPU / pixel</text>
+
+          <line x1="150" y1="210" x2="230" y2="130" stroke="#4b5563" stroke-width="1.5"/>
+          <line x1="150" y1="210" x2="230" y2="290" stroke="#4b5563" stroke-width="1.5"/>
+
+          <!-- engine A -->
+          <rect x="230" y="80" width="290" height="100" rx="3" fill="#0f2a20" stroke="#00d282" stroke-width="1.5"/>
+          <text x="250" y="115" font-family="Cascadia Code, monospace" font-size="15" fill="#00d282">MOTOR A</text>
+          <text x="250" y="145" font-family="Cascadia Code, monospace" font-size="16" fill="#e9edf3">SetDeviceGammaRamp</text>
+          <text x="250" y="168" font-family="Cascadia Code, monospace" font-size="14" fill="#7c8798">ganhos lineares · tonemap</text>
+
+          <!-- engine B -->
+          <rect x="230" y="240" width="290" height="100" rx="3" fill="#2e2210" stroke="#ffb454" stroke-width="1.5"/>
+          <text x="250" y="275" font-family="Cascadia Code, monospace" font-size="15" fill="#ffb454">MOTOR B</text>
+          <text x="250" y="305" font-family="Cascadia Code, monospace" font-size="16" fill="#e9edf3">Magnification API</text>
+          <text x="250" y="328" font-family="Cascadia Code, monospace" font-size="14" fill="#7c8798">matriz de cor 5×5</text>
+
+          <line x1="520" y1="130" x2="600" y2="210" stroke="#4b5563" stroke-width="1.5"/>
+          <line x1="520" y1="290" x2="600" y2="210" stroke="#4b5563" stroke-width="1.5"/>
+
+          <!-- monitor -->
+          <rect x="600" y="170" width="140" height="80" rx="3" fill="none" stroke="#2a3644" stroke-width="1.5"/>
+          <text x="670" y="216" text-anchor="middle" font-family="Cascadia Code, monospace" font-size="16" fill="#e9edf3">monitor</text>
+
+          <line x1="740" y1="210" x2="800" y2="210" stroke="#4b5563" stroke-width="1.5"/>
+          <polygon points="800,204 814,210 800,216" fill="#4b5563"/>
+
+          <text x="230" y="400" font-family="Cascadia Code, monospace" font-size="14" fill="#4b5563">
+            9 filtros: noturno, papel creme, retrô...  ·  7 filtros: fósforo âmbar, astrônomo, feliz...
+          </text>
+        </svg>
+      </div>
+    </div>
+  </div>
+  <div class="footer">
+    <span class="brand"><b>EYEZEN</b> — filtros de cor para windows</span>
+    <span>fig. 03/10</span>
+  </div>
+</section>
+
+<!-- ═══════════════════════════ SLIDE 04 — ENGINE A ═══════════════════════════ -->
+<section class="slide">
+  <div class="ticks"><span class="tl"></span><span class="tr"></span><span class="bl"></span><span class="br"></span></div>
+  <div class="content">
+    <div class="eyebrow">Fig. 04/10 — motor a</div>
+    <div class="headline">a curva que o windows<br>usa pra tudo</div>
+    <div class="lede">
+      <code class="inline">SetDeviceGammaRamp</code> recebe três tabelas de 256 pontos, uma por canal —
+      768 valores no total. Cada canal de entrada (0–255) é remapeado para uma saída (0–65535).
+      É a mesma API que o Night Light usa por trás dos panos.
+    </div>
+
+    <div class="panel">
+      <div class="panel-label">esquemático — <b>curva de ganho linear · r=1.00 g=1.00 b=0.85</b></div>
+      <div class="panel-body">
+        <svg viewBox="0 0 900 460">
+          <!-- axes -->
+          <line x1="100" y1="400" x2="820" y2="400" stroke="#2a3644" stroke-width="1.5"/>
+          <line x1="100" y1="400" x2="100" y2="60"  stroke="#2a3644" stroke-width="1.5"/>
+          <text x="460" y="440" text-anchor="middle" font-family="Cascadia Code, monospace" font-size="16" fill="#7c8798">entrada (0–255)</text>
+          <text x="60" y="230" text-anchor="middle" font-family="Cascadia Code, monospace" font-size="16" fill="#7c8798" transform="rotate(-90 60 230)">saída</text>
+
+          <!-- reference diagonal (identity, gain 1.0) -->
+          <line x1="100" y1="400" x2="820" y2="60" stroke="#1b2430" stroke-width="1.5" stroke-dasharray="6 6"/>
+          <text x="760" y="90" font-family="Cascadia Code, monospace" font-size="13" fill="#4b5563">ganho 1.00</text>
+
+          <!-- actual gain 0.85 line for blue channel -->
+          <line x1="100" y1="400" x2="820" y2="106" stroke="#4d8fff" stroke-width="3"/>
+          <text x="600" y="150" font-family="Cascadia Code, monospace" font-size="14" fill="#4d8fff">canal azul · ganho 0.85</text>
+
+          <circle cx="460" cy="253" r="6" fill="#4d8fff"/>
+          <line x1="460" y1="253" x2="460" y2="400" stroke="#1b2430" stroke-width="1" stroke-dasharray="4 4"/>
+          <line x1="100" y1="253" x2="460" y2="253" stroke="#1b2430" stroke-width="1" stroke-dasharray="4 4"/>
+          <text x="460" y="418" text-anchor="middle" font-family="Cascadia Code, monospace" font-size="13" fill="#7c8798">128</text>
+          <text x="80" y="257" text-anchor="end" font-family="Cascadia Code, monospace" font-size="13" fill="#7c8798">27846</text>
+        </svg>
+      </div>
+    </div>
+  </div>
+  <div class="footer">
+    <span class="brand"><b>EYEZEN</b> — filtros de cor para windows</span>
+    <span>fig. 04/10</span>
+  </div>
+</section>
+
+<!-- ═══════════════════════════ SLIDE 05 — THE WALL ═══════════════════════════ -->
+<section class="slide">
+  <div class="ticks"><span class="tl"></span><span class="tr"></span><span class="bl"></span><span class="br"></span></div>
+  <div class="content">
+    <div class="eyebrow">Fig. 05/10 — a parede invisível</div>
+    <div class="headline">o driver recusa em<br><span style="color:var(--danger)">silêncio total</span></div>
+    <div class="lede">
+      Drivers modernos de Windows <strong>ignoram</strong> <code class="inline">SetDeviceGammaRamp</code> quando
+      o ganho de qualquer canal cai abaixo de ~0.50. Não lançam erro. Não retornam falha.
+      A chamada retorna sucesso — e a tela simplesmente não muda.
+      Foi assim que descobrimos por que três filtros "não funcionavam".
+    </div>
+
+    <div class="panel">
+      <div class="panel-label">esquemático — <b>tentativa de ganho 0.12 (modo vela)</b></div>
+      <div class="panel-body">
+        <svg viewBox="0 0 900 460">
+          <line x1="100" y1="400" x2="820" y2="400" stroke="#2a3644" stroke-width="1.5"/>
+          <line x1="100" y1="400" x2="100" y2="60"  stroke="#2a3644" stroke-width="1.5"/>
+
+          <!-- hazard wall at gain ~0.50 -->
+          <rect x="100" y="180" width="720" height="10" fill="url(#hazard)" opacity="0.9"/>
+          <defs>
+            <pattern id="hazard" width="24" height="10" patternUnits="userSpaceOnUse" patternTransform="rotate(0)">
+              <rect width="24" height="10" fill="#3a2a12"/>
+              <polygon points="0,10 12,0 24,0 12,10" fill="#ffb454" opacity="0.5"/>
+            </pattern>
+          </defs>
+          <text x="760" y="172" text-anchor="end" font-family="Cascadia Code, monospace" font-size="14" fill="#ffb454">limite do driver ≈ 0.50</text>
+
+          <!-- intended line going below the wall, dashed / crossed out -->
+          <line x1="100" y1="400" x2="820" y2="352" stroke="#ff5c5c" stroke-width="3" stroke-dasharray="10 8"/>
+          <text x="560" y="380" font-family="Cascadia Code, monospace" font-size="14" fill="#ff5c5c">ganho 0.12 pedido — ignorado</text>
+
+          <!-- what the user actually sees: flat identity -->
+          <line x1="100" y1="400" x2="820" y2="60" stroke="#4b5563" stroke-width="2" stroke-dasharray="4 4"/>
+          <text x="140" y="90" font-family="Cascadia Code, monospace" font-size="14" fill="#7c8798">tela permanece sem alteração</text>
+
+          <circle cx="460" cy="376" r="7" fill="#ff5c5c"/>
+          <text x="460" y="330" text-anchor="middle" font-family="Cascadia Code, monospace" font-size="13" fill="#ff5c5c">retorno: TRUE</text>
+        </svg>
+      </div>
+    </div>
+  </div>
+  <div class="footer">
+    <span class="brand"><b>EYEZEN</b> — filtros de cor para windows</span>
+    <span>fig. 05/10</span>
+  </div>
+</section>
+
+<!-- ═══════════════════════════ SLIDE 06 — ENGINE B ═══════════════════════════ -->
+<section class="slide">
+  <div class="ticks"><span class="tl"></span><span class="tr"></span><span class="bl"></span><span class="br"></span></div>
+  <div class="content">
+    <div class="eyebrow">Fig. 06/10 — motor b</div>
+    <div class="headline">a api de acessibilidade<br>que virou atalho</div>
+    <div class="lede">
+      A <strong>Magnification API</strong> foi criada para ampliar a tela para usuários com baixa visão.
+      Como efeito colateral, aceita uma <strong>matriz 5×5</strong> que mistura canais livremente — sem o limite
+      do driver de gamma. É assim que o fósforo âmbar e o modo astrônomo existem.
+    </div>
+
+    <div class="panel">
+      <div class="panel-label">esquemático — <b>matriz de transformação · filtro fósforo âmbar</b></div>
+      <div class="panel-body">
+        <svg viewBox="0 0 940 420">
+          <!-- input vector -->
+          <text x="30" y="90"  font-family="Cascadia Code, monospace" font-size="17" fill="#e9edf3">R</text>
+          <text x="30" y="140" font-family="Cascadia Code, monospace" font-size="17" fill="#e9edf3">G</text>
+          <text x="30" y="190" font-family="Cascadia Code, monospace" font-size="17" fill="#e9edf3">B</text>
+          <text x="30" y="240" font-family="Cascadia Code, monospace" font-size="17" fill="#4b5563">A</text>
+          <text x="30" y="290" font-family="Cascadia Code, monospace" font-size="17" fill="#4b5563">1</text>
+          <rect x="10" y="55" width="60" height="255" fill="none" stroke="#2a3644" stroke-width="1.5" rx="2"/>
+
+          <line x1="80" y1="180" x2="150" y2="180" stroke="#4b5563" stroke-width="1.5"/>
+          <polygon points="150,174 164,180 150,186" fill="#4b5563"/>
+
+          <!-- 5x5 matrix grid -->
+          <g font-family="Cascadia Code, monospace" font-size="15">
+            <!-- grid lines -->
+            <rect x="180" y="30" width="425" height="340" fill="none" stroke="#2a3644" stroke-width="1.5" rx="2"/>
+            <!-- diagonal highlighted cells (identity-ish passthrough) -->
+            <rect x="180" y="234" width="85" height="68" fill="#2e2210"/>
+            <rect x="265" y="302" width="85" height="68" fill="#2e2210"/>
+            <!-- cross channel mix cells (the interesting part) -->
+            <rect x="180" y="30"  width="85" height="68" fill="#0f2a20"/>
+            <rect x="180" y="98"  width="85" height="68" fill="#0f2a20"/>
+            <rect x="265" y="30"  width="85" height="68" fill="#0f2a20"/>
+            <rect x="265" y="98"  width="85" height="68" fill="#0f2a20"/>
+
+            <!-- vertical/horizontal separators -->
+            <line x1="265" y1="30" x2="265" y2="370" stroke="#2a3644" stroke-width="1"/>
+            <line x1="350" y1="30" x2="350" y2="370" stroke="#2a3644" stroke-width="1"/>
+            <line x1="435" y1="30" x2="435" y2="370" stroke="#2a3644" stroke-width="1"/>
+            <line x1="520" y1="30" x2="520" y2="370" stroke="#2a3644" stroke-width="1"/>
+            <line x1="180" y1="98"  x2="605" y2="98"  stroke="#2a3644" stroke-width="1"/>
+            <line x1="180" y1="166" x2="605" y2="166" stroke="#2a3644" stroke-width="1"/>
+            <line x1="180" y1="234" x2="605" y2="234" stroke="#2a3644" stroke-width="1"/>
+            <line x1="180" y1="302" x2="605" y2="302" stroke="#2a3644" stroke-width="1"/>
+
+            <text x="222" y="70"  text-anchor="middle" fill="#00d282">.213</text>
+            <text x="307" y="70"  text-anchor="middle" fill="#00d282">.132</text>
+            <text x="392" y="70"  text-anchor="middle" fill="#4b5563">0</text>
+            <text x="477" y="70"  text-anchor="middle" fill="#4b5563">0</text>
+            <text x="562" y="70"  text-anchor="middle" fill="#4b5563">0</text>
+
+            <text x="222" y="138" text-anchor="middle" fill="#00d282">.715</text>
+            <text x="307" y="138" text-anchor="middle" fill="#00d282">.443</text>
+            <text x="392" y="138" text-anchor="middle" fill="#4b5563">0</text>
+            <text x="477" y="138" text-anchor="middle" fill="#4b5563">0</text>
+            <text x="562" y="138" text-anchor="middle" fill="#4b5563">0</text>
+
+            <text x="222" y="206" text-anchor="middle" fill="#ffb454">.072</text>
+            <text x="307" y="206" text-anchor="middle" fill="#ffb454">.045</text>
+            <text x="392" y="206" text-anchor="middle" fill="#4b5563">0</text>
+            <text x="477" y="206" text-anchor="middle" fill="#4b5563">0</text>
+            <text x="562" y="206" text-anchor="middle" fill="#4b5563">0</text>
+
+            <text x="222" y="274" text-anchor="middle" fill="#4b5563">0</text>
+            <text x="307" y="274" text-anchor="middle" fill="#4b5563">0</text>
+            <text x="392" y="274" text-anchor="middle" fill="#7c8798">1</text>
+            <text x="477" y="274" text-anchor="middle" fill="#4b5563">0</text>
+            <text x="562" y="274" text-anchor="middle" fill="#4b5563">0</text>
+
+            <text x="222" y="342" text-anchor="middle" fill="#4b5563">0</text>
+            <text x="307" y="342" text-anchor="middle" fill="#4b5563">0</text>
+            <text x="392" y="342" text-anchor="middle" fill="#4b5563">0</text>
+            <text x="477" y="342" text-anchor="middle" fill="#4b5563">0</text>
+            <text x="562" y="342" text-anchor="middle" fill="#7c8798">1</text>
+          </g>
+
+          <line x1="605" y1="200" x2="675" y2="200" stroke="#4b5563" stroke-width="1.5"/>
+          <polygon points="675,194 689,200 675,206" fill="#4b5563"/>
+
+          <!-- output vector -->
+          <rect x="700" y="55" width="60" height="255" fill="none" stroke="#00d282" stroke-width="1.5" rx="2"/>
+          <text x="718" y="90"  font-family="Cascadia Code, monospace" font-size="17" fill="#00d282">R'</text>
+          <text x="718" y="140" font-family="Cascadia Code, monospace" font-size="17" fill="#00d282">G'</text>
+          <text x="718" y="190" font-family="Cascadia Code, monospace" font-size="17" fill="#00d282">B'</text>
+          <text x="718" y="240" font-family="Cascadia Code, monospace" font-size="17" fill="#4b5563">A</text>
+          <text x="718" y="290" font-family="Cascadia Code, monospace" font-size="17" fill="#4b5563">1</text>
+
+          <text x="180" y="405" font-family="Cascadia Code, monospace" font-size="14" fill="#7c8798">
+            células verdes: mistura cross-channel · sépia/âmbar nasce daqui, não de um ganho simples
+          </text>
+        </svg>
+      </div>
+    </div>
+  </div>
+  <div class="footer">
+    <span class="brand"><b>EYEZEN</b> — filtros de cor para windows</span>
+    <span>fig. 06/10</span>
+  </div>
+</section>
+
+<!-- ═══════════════════════════ SLIDE 07 — TRANSITIONS ═══════════════════════════ -->
+<section class="slide">
+  <div class="ticks"><span class="tl"></span><span class="tr"></span><span class="bl"></span><span class="br"></span></div>
+  <div class="content">
+    <div class="eyebrow">Fig. 07/10 — percepção</div>
+    <div class="headline">trocar de filtro não pode<br>parecer um flash</div>
+    <div class="lede">
+      Toda troca de filtro interpola 1400ms entre a curva antiga e a nova, usando uma curva de
+      aceleração e desaceleração — <code class="inline">1 − (1−t)³</code> — em vez de uma transição linear e mecânica.
+      É a diferença entre "a tela mudou" e "a tela se acomodou".
+    </div>
+
+    <div class="panel">
+      <div class="panel-label">esquemático — <b>ease-out cúbico vs. transição linear</b></div>
+      <div class="panel-body">
+        <svg viewBox="0 0 900 460">
+          <line x1="100" y1="400" x2="820" y2="400" stroke="#2a3644" stroke-width="1.5"/>
+          <line x1="100" y1="400" x2="100" y2="60"  stroke="#2a3644" stroke-width="1.5"/>
+          <text x="460" y="440" text-anchor="middle" font-family="Cascadia Code, monospace" font-size="16" fill="#7c8798">tempo (0 → 1400ms)</text>
+          <text x="60" y="230" text-anchor="middle" font-family="Cascadia Code, monospace" font-size="16" fill="#7c8798" transform="rotate(-90 60 230)">progresso</text>
+
+          <!-- linear reference -->
+          <line x1="100" y1="400" x2="820" y2="60" stroke="#4b5563" stroke-width="2" stroke-dasharray="6 6"/>
+          <text x="700" y="120" font-family="Cascadia Code, monospace" font-size="14" fill="#7c8798">linear (mecânico)</text>
+
+          <!-- ease out cubic: 1-(1-t)^3 sampled -->
+          <polyline
+            points="100,400 172,255 244,178 316,131 388,103 460,86 532,75 604,68 676,64 748,61 820,60"
+            fill="none" stroke="#00d282" stroke-width="3.5"/>
+          <text x="560" y="180" font-family="Cascadia Code, monospace" font-size="14" fill="#00d282">ease-out cúbico (eyezen)</text>
+
+          <circle cx="100" cy="400" r="6" fill="#00d282"/>
+          <circle cx="820" cy="60" r="6" fill="#00d282"/>
+          <text x="100" y="424" font-family="Cascadia Code, monospace" font-size="13" fill="#7c8798">filtro a</text>
+          <text x="790" y="44" font-family="Cascadia Code, monospace" font-size="13" fill="#7c8798">filtro b</text>
+        </svg>
+      </div>
+    </div>
+  </div>
+  <div class="footer">
+    <span class="brand"><b>EYEZEN</b> — filtros de cor para windows</span>
+    <span>fig. 07/10</span>
+  </div>
+</section>
+
+<!-- ═══════════════════════════ SLIDE 08 — CONTEXT AWARENESS ═══════════════════════════ -->
+<section class="slide">
+  <div class="ticks"><span class="tl"></span><span class="tr"></span><span class="bl"></span><span class="br"></span></div>
+  <div class="content">
+    <div class="eyebrow">Fig. 08/10 — automação</div>
+    <div class="headline">o filtro sabe o que<br>você está fazendo</div>
+    <div class="lede">
+      A cada 500ms, uma chamada a <code class="inline">GetForegroundWindow</code> identifica o processo em foco.
+      Abriu o Chrome? Aplica leitura noturna. Voltou pro VS Code? Restaura o que você tinha escolhido.
+      Custo de CPU: irrelevante. Nenhum concorrente faz isso hoje.
+    </div>
+
+    <div class="panel">
+      <div class="panel-label">esquemático — <b>ciclo de detecção de contexto</b></div>
+      <div class="panel-body">
+        <svg viewBox="0 0 940 440">
+          <rect x="370" y="20" width="200" height="70" rx="3" fill="none" stroke="#2a3644" stroke-width="1.5"/>
+          <text x="470" y="62" text-anchor="middle" font-family="Cascadia Code, monospace" font-size="15" fill="#e9edf3">poll · 500ms</text>
+
+          <line x1="470" y1="90" x2="470" y2="140" stroke="#4b5563" stroke-width="1.5"/>
+          <polygon points="464,140 470,154 476,140" fill="#4b5563"/>
+
+          <!-- decision diamond -->
+          <polygon points="470,150 590,225 470,300 350,225" fill="#10161f" stroke="#ffb454" stroke-width="1.5"/>
+          <text x="470" y="220" text-anchor="middle" font-family="Cascadia Code, monospace" font-size="14" fill="#ffb454">app mudou</text>
+          <text x="470" y="240" text-anchor="middle" font-family="Cascadia Code, monospace" font-size="14" fill="#ffb454">e tem regra?</text>
+
+          <!-- yes branch -->
+          <line x1="590" y1="225" x2="700" y2="225" stroke="#4b5563" stroke-width="1.5"/>
+          <text x="618" y="216" font-family="Cascadia Code, monospace" font-size="13" fill="#00d282">sim</text>
+          <rect x="700" y="185" width="210" height="80" rx="3" fill="#0f2a20" stroke="#00d282" stroke-width="1.5"/>
+          <text x="805" y="220" text-anchor="middle" font-family="Cascadia Code, monospace" font-size="14" fill="#e9edf3">aplica filtro</text>
+          <text x="805" y="242" text-anchor="middle" font-family="Cascadia Code, monospace" font-size="14" fill="#e9edf3">configurado</text>
+
+          <!-- no branch -->
+          <line x1="350" y1="225" x2="240" y2="225" stroke="#4b5563" stroke-width="1.5"/>
+          <text x="270" y="216" font-family="Cascadia Code, monospace" font-size="13" fill="#7c8798">não</text>
+          <rect x="30" y="185" width="210" height="80" rx="3" fill="#10161f" stroke="#2a3644" stroke-width="1.5"/>
+          <text x="135" y="220" text-anchor="middle" font-family="Cascadia Code, monospace" font-size="14" fill="#e9edf3">restaura último</text>
+          <text x="135" y="242" text-anchor="middle" font-family="Cascadia Code, monospace" font-size="14" fill="#e9edf3">filtro manual</text>
+
+          <!-- loop back -->
+          <path d="M 805 265 C 805 380, 470 380, 470 320" fill="none" stroke="#2a3644" stroke-width="1.5"/>
+          <path d="M 135 265 C 135 380, 470 380, 470 320" fill="none" stroke="#2a3644" stroke-width="1.5"/>
+          <polygon points="463,320 470,306 477,320" fill="#2a3644"/>
+          <text x="470" y="400" text-anchor="middle" font-family="Cascadia Code, monospace" font-size="14" fill="#4b5563">repete a cada ciclo</text>
+        </svg>
+      </div>
+    </div>
+  </div>
+  <div class="footer">
+    <span class="brand"><b>EYEZEN</b> — filtros de cor para windows</span>
+    <span>fig. 08/10</span>
+  </div>
+</section>
+
+<!-- ═══════════════════════════ SLIDE 09 — THE NUMBERS ═══════════════════════════ -->
+<section class="slide">
+  <div class="ticks"><span class="tl"></span><span class="tr"></span><span class="bl"></span><span class="br"></span></div>
+  <div class="content" style="padding-bottom: 60px;">
+    <div class="eyebrow">Fig. 09/10 — em números</div>
+    <div class="headline">o custo de fazer<br>isso direito</div>
+    <div class="lede">
+      Nenhum desses números é acidente. Cada um é resultado de uma decisão específica de arquitetura,
+      não de otimização genérica.
+    </div>
+
+    <div class="stat-grid" style="margin-top:40px;">
+      <div class="stat"><div class="num">3.54<span style="font-size:0.5em;color:var(--muted)"> MB</span></div><div class="label">binário final · era 67 MB em Python</div></div>
+      <div class="stat warm"><div class="num">16</div><div class="label">filtros preset configuráveis</div></div>
+      <div class="stat"><div class="num">5×5</div><div class="label">matriz de cor por filtro avançado</div></div>
+      <div class="stat warm"><div class="num">1.4<span style="font-size:0.5em;color:var(--muted)">s</span></div><div class="label">duração da transição ease-out</div></div>
+      <div class="stat"><div class="num">500<span style="font-size:0.5em;color:var(--muted)">ms</span></div><div class="label">intervalo de detecção de app ativo</div></div>
+      <div class="stat warm"><div class="num">0</div><div class="label">dependências externas em runtime</div></div>
+    </div>
+  </div>
+  <div class="footer">
+    <span class="brand"><b>EYEZEN</b> — filtros de cor para windows</span>
+    <span>fig. 09/10</span>
+  </div>
+</section>
+
+<!-- ═══════════════════════════ SLIDE 10 — CLOSE ═══════════════════════════ -->
+<section class="slide">
+  <div class="ticks"><span class="tl"></span><span class="tr"></span><span class="bl"></span><span class="br"></span></div>
+  <div class="content" style="justify-content:center; padding-top:0;">
+    <div class="eyebrow">Fig. 10/10 — fim de linha</div>
+    <div class="headline" style="font-size:64px;">software que parece<br>simples raramente é</div>
+    <div class="lede" style="margin-top:30px; max-width:800px;">
+      Um filtro de cor devia ser trivial. Mas entre "funciona no meu PC" e "funciona de verdade"
+      existe uma parede de driver, uma API de acessibilidade sequestrada para outro fim,
+      e uma curva de easing que ninguém nota até sentir a falta dela.
+    </div>
+
+    <div class="panel" style="margin-top:56px; flex:none; padding:44px 48px; display:flex; flex-direction:row; align-items:center; justify-content:space-between;">
+      <div>
+        <div style="font-family:var(--mono); font-size:22px; color:var(--muted); text-transform:uppercase; letter-spacing:0.08em;">download gratuito</div>
+        <div style="font-family:var(--mono); font-weight:700; font-size:30px; color:var(--accent); margin-top:10px;">github.com/Andrade020/EyeZen2</div>
+        <div style="font-family:var(--mono); font-size:18px; color:var(--muted-2); margin-top:14px;">.exe portátil · sem instalação · Windows 10/11</div>
+      </div>
+    </div>
+  </div>
+  <div class="footer">
+    <span class="brand"><b>EYEZEN</b> — feito em Rust</span>
+    <span>fig. 10/10</span>
+  </div>
+</section>
+
+</body>
+</html>

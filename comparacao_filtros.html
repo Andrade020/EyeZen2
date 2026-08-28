@@ -1,0 +1,303 @@
+<!DOCTYPE html>
+<html lang="pt-BR">
+<head>
+<meta charset="UTF-8">
+<title>EyeZen — Comparação de Filtros</title>
+<style>
+  * { margin: 0; padding: 0; box-sizing: border-box; }
+  body {
+    background: #0d0d14;
+    font-family: 'Segoe UI', system-ui, sans-serif;
+    padding: 32px;
+    color: #fff;
+  }
+  h1 {
+    text-align: center;
+    color: #00d282;
+    font-size: 22px;
+    letter-spacing: 0.04em;
+    margin-bottom: 8px;
+    font-weight: 600;
+  }
+  .subtitle {
+    text-align: center;
+    color: #555;
+    font-size: 13px;
+    margin-bottom: 36px;
+    letter-spacing: 0.02em;
+  }
+  .grid {
+    display: grid;
+    grid-template-columns: repeat(3, 1fr);
+    gap: 20px;
+    max-width: 1100px;
+    margin: 0 auto;
+  }
+  .card {
+    border-radius: 10px;
+    overflow: hidden;
+    border: 1px solid #222;
+    background: #111;
+  }
+  .label {
+    padding: 8px 14px;
+    font-size: 12px;
+    font-weight: 600;
+    letter-spacing: 0.05em;
+    text-transform: uppercase;
+    display: flex;
+    align-items: center;
+    gap: 8px;
+    background: #0d0d14;
+    border-bottom: 1px solid #222;
+  }
+  .dot {
+    width: 8px; height: 8px;
+    border-radius: 50%;
+    flex-shrink: 0;
+  }
+  .preview {
+    padding: 16px;
+  }
+
+  /* ── Filtros CSS aproximados ── */
+  .filter-normal   .preview { filter: none; }
+  .filter-noturno  .preview { filter: sepia(0.25) saturate(0.88) hue-rotate(-8deg) brightness(0.92); }
+  .filter-ambar    .preview { filter: grayscale(1) sepia(1) saturate(4) brightness(0.62) hue-rotate(-15deg); }
+  .filter-feliz    .preview { filter: saturate(1.4) brightness(1.04) hue-rotate(2deg); }
+  .filter-retro    .preview { filter: sepia(0.45) saturate(0.75) contrast(0.86) brightness(1.06); }
+  .filter-astro    .preview { filter: grayscale(0.85) sepia(1) hue-rotate(-40deg) saturate(1.5) brightness(0.38); }
+
+  /* ── Conteúdo simulado: editor de código ── */
+  .mock-editor {
+    background: #1e1e2e;
+    border-radius: 6px;
+    font-family: 'Cascadia Code', 'Fira Code', 'Consolas', monospace;
+    font-size: 12px;
+    line-height: 1.7;
+    padding: 14px 16px;
+    color: #cdd6f4;
+    border: 1px solid #313244;
+  }
+  .mock-editor .line-num { color: #45475a; user-select: none; margin-right: 14px; }
+  .kw  { color: #cba6f7; } /* keyword */
+  .fn  { color: #89b4fa; } /* function */
+  .str { color: #a6e3a1; } /* string */
+  .num { color: #fab387; } /* number */
+  .cm  { color: #6c7086; } /* comment */
+  .tp  { color: #f38ba8; } /* type */
+  .op  { color: #89dceb; } /* operator/symbol */
+
+  /* ── Conteúdo simulado: documento de texto ── */
+  .mock-doc {
+    background: #fafaf8;
+    border-radius: 6px;
+    font-family: Georgia, serif;
+    font-size: 12px;
+    line-height: 1.75;
+    padding: 14px 16px;
+    color: #1a1a1a;
+    margin-top: 10px;
+    border: 1px solid #e0e0d8;
+  }
+  .mock-doc .doc-title { font-weight: bold; font-size: 14px; margin-bottom: 6px; color: #111; }
+  .mock-doc p { color: #333; margin-bottom: 6px; }
+  .mock-doc .highlight { background: #fff3cd; padding: 0 2px; }
+
+  /* ── Barra de sistema simulada ── */
+  .mock-bar {
+    display: flex;
+    align-items: center;
+    gap: 6px;
+    margin-top: 10px;
+    padding: 7px 12px;
+    background: #181825;
+    border-radius: 6px;
+    border: 1px solid #313244;
+    font-size: 11px;
+    color: #6c7086;
+  }
+  .mock-bar .icon { font-size: 14px; }
+  .mock-bar .time { margin-left: auto; color: #a6adc8; }
+  .mock-bar .badge {
+    background: #00d282;
+    color: #000;
+    font-size: 10px;
+    font-weight: 700;
+    padding: 1px 6px;
+    border-radius: 4px;
+  }
+</style>
+</head>
+<body>
+
+<h1>EyeZen — Comparação Visual de Filtros</h1>
+<p class="subtitle">O mesmo conteúdo visto através de cada modo. As cores adaptam ao que você está fazendo.</p>
+
+<div class="grid">
+
+  <!-- 1. Normal -->
+  <div class="card filter-normal">
+    <div class="label">
+      <span class="dot" style="background:#555"></span>
+      <span style="color:#aaa">⏹ Desativado</span>
+      <span style="color:#444; margin-left:auto">sem filtro</span>
+    </div>
+    <div class="preview">
+      <div class="mock-editor">
+        <div><span class="line-num">1</span><span class="kw">fn</span> <span class="fn">apply_filter</span><span class="op">(</span><span class="tp">&amp;mut self</span><span class="op">)</span> <span class="op">{</span></div>
+        <div><span class="line-num">2</span>  <span class="kw">let</span> intensity <span class="op">=</span> <span class="num">1.0</span><span class="op">;</span></div>
+        <div><span class="line-num">3</span>  <span class="cm">// aplica via gamma ramp</span></div>
+        <div><span class="line-num">4</span>  <span class="fn">set_gamma</span><span class="op">(</span><span class="str">"noturno"</span><span class="op">);</span></div>
+        <div><span class="line-num">5</span><span class="op">}</span></div>
+      </div>
+      <div class="mock-doc">
+        <div class="doc-title">Relatório — Junho 2025</div>
+        <p>Os resultados obtidos durante o <span class="highlight">período de testes</span> demonstraram melhora consistente na retenção.</p>
+      </div>
+      <div class="mock-bar">
+        <span class="icon">⏹</span> Nenhum filtro ativo
+        <span class="time">23:14</span>
+      </div>
+    </div>
+  </div>
+
+  <!-- 2. Noturno Suave -->
+  <div class="card filter-noturno">
+    <div class="label">
+      <span class="dot" style="background:#c87941"></span>
+      <span style="color:#e8a06a">🌙 Noturno Suave</span>
+      <span style="color:#444; margin-left:auto">menos azul</span>
+    </div>
+    <div class="preview">
+      <div class="mock-editor">
+        <div><span class="line-num">1</span><span class="kw">fn</span> <span class="fn">apply_filter</span><span class="op">(</span><span class="tp">&amp;mut self</span><span class="op">)</span> <span class="op">{</span></div>
+        <div><span class="line-num">2</span>  <span class="kw">let</span> intensity <span class="op">=</span> <span class="num">1.0</span><span class="op">;</span></div>
+        <div><span class="line-num">3</span>  <span class="cm">// aplica via gamma ramp</span></div>
+        <div><span class="line-num">4</span>  <span class="fn">set_gamma</span><span class="op">(</span><span class="str">"noturno"</span><span class="op">);</span></div>
+        <div><span class="line-num">5</span><span class="op">}</span></div>
+      </div>
+      <div class="mock-doc">
+        <div class="doc-title">Relatório — Junho 2025</div>
+        <p>Os resultados obtidos durante o <span class="highlight">período de testes</span> demonstraram melhora consistente na retenção.</p>
+      </div>
+      <div class="mock-bar">
+        <span class="icon">🌙</span> Noturno Suave ativo
+        <span class="badge">AUTO</span>
+        <span class="time">23:14</span>
+      </div>
+    </div>
+  </div>
+
+  <!-- 3. Fósforo Âmbar -->
+  <div class="card filter-ambar">
+    <div class="label">
+      <span class="dot" style="background:#c87000"></span>
+      <span style="color:#d4870a">🟠 Fósforo Âmbar</span>
+      <span style="color:#444; margin-left:auto">monitor vintage</span>
+    </div>
+    <div class="preview">
+      <div class="mock-editor">
+        <div><span class="line-num">1</span><span class="kw">fn</span> <span class="fn">apply_filter</span><span class="op">(</span><span class="tp">&amp;mut self</span><span class="op">)</span> <span class="op">{</span></div>
+        <div><span class="line-num">2</span>  <span class="kw">let</span> intensity <span class="op">=</span> <span class="num">1.0</span><span class="op">;</span></div>
+        <div><span class="line-num">3</span>  <span class="cm">// aplica via gamma ramp</span></div>
+        <div><span class="line-num">4</span>  <span class="fn">set_gamma</span><span class="op">(</span><span class="str">"noturno"</span><span class="op">);</span></div>
+        <div><span class="line-num">5</span><span class="op">}</span></div>
+      </div>
+      <div class="mock-doc">
+        <div class="doc-title">Relatório — Junho 2025</div>
+        <p>Os resultados obtidos durante o <span class="highlight">período de testes</span> demonstraram melhora consistente na retenção.</p>
+      </div>
+      <div class="mock-bar">
+        <span class="icon">🟠</span> Fósforo Âmbar ativo
+        <span class="time">23:14</span>
+      </div>
+    </div>
+  </div>
+
+  <!-- 4. Modo Feliz -->
+  <div class="card filter-feliz">
+    <div class="label">
+      <span class="dot" style="background:#c8a800"></span>
+      <span style="color:#ffd000">✨ Modo Feliz</span>
+      <span style="color:#444; margin-left:auto">saturação +25%</span>
+    </div>
+    <div class="preview">
+      <div class="mock-editor">
+        <div><span class="line-num">1</span><span class="kw">fn</span> <span class="fn">apply_filter</span><span class="op">(</span><span class="tp">&amp;mut self</span><span class="op">)</span> <span class="op">{</span></div>
+        <div><span class="line-num">2</span>  <span class="kw">let</span> intensity <span class="op">=</span> <span class="num">1.0</span><span class="op">;</span></div>
+        <div><span class="line-num">3</span>  <span class="cm">// aplica via gamma ramp</span></div>
+        <div><span class="line-num">4</span>  <span class="fn">set_gamma</span><span class="op">(</span><span class="str">"noturno"</span><span class="op">);</span></div>
+        <div><span class="line-num">5</span><span class="op">}</span></div>
+      </div>
+      <div class="mock-doc">
+        <div class="doc-title">Relatório — Junho 2025</div>
+        <p>Os resultados obtidos durante o <span class="highlight">período de testes</span> demonstraram melhora consistente na retenção.</p>
+      </div>
+      <div class="mock-bar">
+        <span class="icon">✨</span> Modo Feliz ativo
+        <span class="time">23:14</span>
+      </div>
+    </div>
+  </div>
+
+  <!-- 5. Modo Retrô -->
+  <div class="card filter-retro">
+    <div class="label">
+      <span class="dot" style="background:#9a5a14"></span>
+      <span style="color:#c87832">📺 Modo Retrô</span>
+      <span style="color:#444; margin-left:auto">CRT quente</span>
+    </div>
+    <div class="preview">
+      <div class="mock-editor">
+        <div><span class="line-num">1</span><span class="kw">fn</span> <span class="fn">apply_filter</span><span class="op">(</span><span class="tp">&amp;mut self</span><span class="op">)</span> <span class="op">{</span></div>
+        <div><span class="line-num">2</span>  <span class="kw">let</span> intensity <span class="op">=</span> <span class="num">1.0</span><span class="op">;</span></div>
+        <div><span class="line-num">3</span>  <span class="cm">// aplica via gamma ramp</span></div>
+        <div><span class="line-num">4</span>  <span class="fn">set_gamma</span><span class="op">(</span><span class="str">"noturno"</span><span class="op">);</span></div>
+        <div><span class="line-num">5</span><span class="op">}</span></div>
+      </div>
+      <div class="mock-doc">
+        <div class="doc-title">Relatório — Junho 2025</div>
+        <p>Os resultados obtidos durante o <span class="highlight">período de testes</span> demonstraram melhora consistente na retenção.</p>
+      </div>
+      <div class="mock-bar">
+        <span class="icon">📺</span> Modo Retrô ativo
+        <span class="time">23:14</span>
+      </div>
+    </div>
+  </div>
+
+  <!-- 6. Astrônomo -->
+  <div class="card filter-astro">
+    <div class="label">
+      <span class="dot" style="background:#8b0000"></span>
+      <span style="color:#c02020">🔭 Astrônomo</span>
+      <span style="color:#444; margin-left:auto">modo escuro total</span>
+    </div>
+    <div class="preview">
+      <div class="mock-editor">
+        <div><span class="line-num">1</span><span class="kw">fn</span> <span class="fn">apply_filter</span><span class="op">(</span><span class="tp">&amp;mut self</span><span class="op">)</span> <span class="op">{</span></div>
+        <div><span class="line-num">2</span>  <span class="kw">let</span> intensity <span class="op">=</span> <span class="num">1.0</span><span class="op">;</span></div>
+        <div><span class="line-num">3</span>  <span class="cm">// aplica via gamma ramp</span></div>
+        <div><span class="line-num">4</span>  <span class="fn">set_gamma</span><span class="op">(</span><span class="str">"noturno"</span><span class="op">);</span></div>
+        <div><span class="line-num">5</span><span class="op">}</span></div>
+      </div>
+      <div class="mock-doc">
+        <div class="doc-title">Relatório — Junho 2025</div>
+        <p>Os resultados obtidos durante o <span class="highlight">período de testes</span> demonstraram melhora consistente na retenção.</p>
+      </div>
+      <div class="mock-bar">
+        <span class="icon">🔭</span> Astrônomo ativo
+        <span class="time">23:14</span>
+      </div>
+    </div>
+  </div>
+
+</div>
+
+<p style="text-align:center; color:#333; font-size:11px; margin-top:28px; letter-spacing:0.04em;">
+  EyeZen &mdash; eyezen.app &mdash; Gratuito &mdash; Windows &mdash; Feito em Rust
+</p>
+
+</body>
+</html>

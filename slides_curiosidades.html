@@ -1,0 +1,450 @@
+<!DOCTYPE html>
+<html lang="pt-BR">
+<head>
+<meta charset="UTF-8">
+<title>EyeZen — O que sua tela nunca contou</title>
+<style>
+  :root {
+    --bg:        #1c1712;
+    --panel:     #251e17;
+    --line:      #3a2f22;
+    --accent:    #f2a65a;
+    --accent-2:  #d98a3d;
+    --teal:      #7fcf9e;
+    --ink:       #f5ead8;
+    --muted:     #b9a58c;
+    --muted-2:   #6b5d4d;
+    --serif: Georgia, 'Iowan Old Style', 'Palatino Linotype', 'Book Antiqua', Palatino, serif;
+    --sans:  'Segoe UI', -apple-system, BlinkMacSystemFont, system-ui, sans-serif;
+  }
+
+  * { margin: 0; padding: 0; box-sizing: border-box; }
+  html, body { background: #000; color: var(--ink); }
+
+  @page { size: 1080px 1350px; margin: 0; }
+
+  @media screen {
+    body { display: flex; flex-direction: column; align-items: center; gap: 28px; padding: 28px; }
+    .slide { box-shadow: 0 24px 70px rgba(0,0,0,0.6); }
+  }
+  @media print {
+    body { padding: 0; }
+    .slide { break-after: page; page-break-after: always; box-shadow: none; }
+    .slide:last-child { break-after: auto; page-break-after: auto; }
+  }
+
+  .slide {
+    position: relative;
+    width: 1080px;
+    height: 1350px;
+    flex-shrink: 0;
+    background: var(--bg);
+    overflow: hidden;
+    display: flex;
+    flex-direction: column;
+    font-family: var(--serif);
+  }
+
+  /* Warm vignette, like a lamp glow in the corner — not a grid */
+  .slide::before {
+    content: "";
+    position: absolute;
+    inset: 0;
+    background: radial-gradient(ellipse 900px 700px at 85% -10%, rgba(242,166,90,0.10), transparent 60%),
+                radial-gradient(ellipse 700px 600px at -10% 110%, rgba(127,207,158,0.05), transparent 60%);
+    pointer-events: none;
+  }
+
+  .content {
+    position: relative;
+    z-index: 2;
+    flex: 1;
+    display: flex;
+    flex-direction: column;
+    padding: 96px 92px 0 92px;
+    min-height: 0;
+  }
+
+  .eyebrow {
+    font-family: var(--sans);
+    font-size: 17px;
+    font-weight: 600;
+    letter-spacing: 0.16em;
+    text-transform: uppercase;
+    color: var(--accent);
+  }
+
+  .fleuron {
+    color: var(--muted-2);
+    font-size: 22px;
+    margin: 18px 0 6px 0;
+  }
+
+  .headline {
+    font-family: var(--serif);
+    font-weight: 700;
+    font-size: 56px;
+    line-height: 1.18;
+    color: var(--ink);
+    margin-top: 14px;
+    text-wrap: balance;
+    max-width: 860px;
+  }
+
+  .body-text {
+    font-family: var(--serif);
+    font-size: 25px;
+    line-height: 1.68;
+    color: var(--muted);
+    margin-top: 30px;
+    max-width: 740px;
+  }
+  .body-text + .body-text { margin-top: 20px; }
+  .body-text strong { color: var(--ink); font-weight: 700; }
+  .body-text em { color: var(--accent); font-style: italic; }
+
+  .pull-quote {
+    font-family: var(--serif);
+    font-style: italic;
+    font-size: 32px;
+    line-height: 1.5;
+    color: var(--accent);
+    margin-top: 40px;
+    padding-left: 30px;
+    border-left: 2.5px solid var(--accent-2);
+    max-width: 700px;
+  }
+
+  .curio-box {
+    margin-top: 36px;
+    background: var(--panel);
+    border: 1px solid var(--line);
+    border-left: 3px solid var(--teal);
+    border-radius: 4px;
+    padding: 24px 30px;
+    max-width: 720px;
+  }
+  .curio-box .tag {
+    font-family: var(--sans);
+    font-size: 13.5px;
+    font-weight: 700;
+    letter-spacing: 0.14em;
+    text-transform: uppercase;
+    color: var(--teal);
+  }
+  .curio-box p {
+    font-family: var(--serif);
+    font-size: 21px;
+    line-height: 1.6;
+    color: var(--muted);
+    margin-top: 10px;
+  }
+  .curio-box p strong { color: var(--ink); }
+
+  .footer {
+    position: relative;
+    z-index: 2;
+    padding: 0 92px 56px 92px;
+    display: flex;
+    align-items: baseline;
+    justify-content: space-between;
+    font-family: var(--sans);
+    font-size: 14.5px;
+    letter-spacing: 0.06em;
+    color: var(--muted-2);
+  }
+  .footer .brand b { color: var(--accent); font-weight: 700; }
+
+  /* Simple honest bar comparison — plain divs, no fabricated charts */
+  .bar-compare { margin-top: 40px; max-width: 720px; }
+  .bar-row { margin-bottom: 22px; }
+  .bar-row .bar-label {
+    font-family: var(--sans);
+    font-size: 15px;
+    color: var(--muted);
+    display: flex;
+    justify-content: space-between;
+    margin-bottom: 8px;
+    letter-spacing: 0.02em;
+  }
+  .bar-row .bar-label b { color: var(--ink); font-family: var(--sans); }
+  .bar-track { background: var(--panel); border: 1px solid var(--line); border-radius: 20px; height: 34px; overflow: hidden; }
+  .bar-fill { height: 100%; border-radius: 20px 0 0 20px; display: flex; align-items: center; }
+  .bar-fill.old { background: linear-gradient(90deg, #6b5d4d, #7a6a56); width: 100%; }
+  .bar-fill.new { background: linear-gradient(90deg, var(--accent-2), var(--accent)); width: 5.3%; }
+
+  .num-inline {
+    font-family: var(--sans);
+    font-weight: 700;
+    color: var(--ink);
+  }
+</style>
+</head>
+<body>
+
+<!-- ═══════════════════════════ 1 — CAPA ═══════════════════════════ -->
+<section class="slide">
+  <div class="content" style="justify-content:center; padding-top:0;">
+    <div class="eyebrow">curiosidades técnicas · eyezen</div>
+    <div class="fleuron">❧</div>
+    <div class="headline" style="font-size:66px; max-width:900px;">
+      O que sua tela nunca contou sobre as próprias cores
+    </div>
+    <div class="body-text" style="font-size:27px; max-width:680px;">
+      Uma pausa pra café sobre como o Windows pinta cada pixel da sua tela —
+      e o que aprendemos, do jeito difícil, construindo um filtro de cor do zero.
+    </div>
+    <div class="body-text" style="margin-top:56px; font-size:19px; color:var(--muted-2); font-family:var(--sans); letter-spacing:0.02em;">
+      9 páginas · uns 4 minutos de leitura
+    </div>
+  </div>
+  <div class="footer">
+    <span class="brand"><b>EyeZen</b> — filtros de cor para Windows</span>
+    <span>1 / 9</span>
+  </div>
+</section>
+
+<!-- ═══════════════════════════ 2 — ADAPTAÇÃO CROMÁTICA ═══════════════════════════ -->
+<section class="slide">
+  <div class="content">
+    <div class="eyebrow">curiosidade nº 1</div>
+    <div class="headline">Seu cérebro edita as cores antes de você "ver" elas</div>
+    <div class="body-text">
+      Uma folha de papel parece branca embaixo de uma vela (luz bem amarela) e também parece branca
+      embaixo de uma lâmpada fluorescente (luz bem azulada) — mesmo essas duas luzes sendo fisicamente
+      muito diferentes. Isso não é uma ilusão de ótica. É o seu cérebro recalibrando, em tempo real,
+      o que ele considera "branco neutro" com base no ambiente.
+    </div>
+    <div class="body-text">
+      Esse fenômeno chama <strong>adaptação cromática</strong>, e é a razão pela qual um filtro de tela forte
+      parece chocante nos primeiros minutos e depois some. O filtro não ficou mais fraco —
+      <em>você</em> se acostumou.
+    </div>
+    <div class="pull-quote">
+      Você não vê a cor da tela. Vê a cor que o seu cérebro decidiu que é normal agora.
+    </div>
+    <div class="curio-box">
+      <div class="tag">detalhe curioso</div>
+      <p>Esse reajuste leva só alguns minutos. É por isso que o EyeZen aplica os filtros com uma transição
+      suave em vez de um corte seco — dar tempo pro olho perceber a mudança em vez de levar um susto.</p>
+    </div>
+  </div>
+  <div class="footer">
+    <span class="brand"><b>EyeZen</b> — filtros de cor para Windows</span>
+    <span>2 / 9</span>
+  </div>
+</section>
+
+<!-- ═══════════════════════════ 3 — GAMMA / CRT ═══════════════════════════ -->
+<section class="slide">
+  <div class="content">
+    <div class="eyebrow">curiosidade nº 2</div>
+    <div class="headline">Toda tela moderna finge ser um tubo de imagem de 1975</div>
+    <div class="body-text">
+      Os monitores CRT antigos tinham um canhão de elétrons cuja resposta entre voltagem e brilho não era
+      linear — dobrar a voltagem não dobrava o brilho, seguia uma curva. Em vez de consertar isso no
+      hardware, a indústria inteira decidiu compensar do outro lado: toda imagem, todo vídeo, todo jogo
+      já nasce "pré-corrigido" para aquela curva específica, chamada de <strong>gamma</strong>.
+    </div>
+    <div class="body-text">
+      O problema é que monitores LCD e OLED de hoje não têm canhão de elétrons nenhum. Não precisariam
+      dessa curva. Mas todo conteúdo digital já existente foi feito assumindo que ela existe —
+      então seu monitor de última geração continua fingindo ser um tubo aposentado há décadas.
+    </div>
+    <div class="pull-quote">
+      Se seu monitor de mil dólares aplica uma curva de gamma, é porque está imitando fielmente
+      uma tecnologia que já não se fabrica.
+    </div>
+    <div class="curio-box">
+      <div class="tag">por dentro do windows</div>
+      <p>A função que o EyeZen usa para ajustar cor, <strong>SetDeviceGammaRamp</strong>, existe desde os
+      tempos do Windows 2000 — criada originalmente para colorímetros de calibração profissional,
+      não para filtros criativos. Estamos usando uma ferramenta de laboratório de cor pra deixar
+      a leitura noturna mais confortável.</p>
+    </div>
+  </div>
+  <div class="footer">
+    <span class="brand"><b>EyeZen</b> — filtros de cor para Windows</span>
+    <span>3 / 9</span>
+  </div>
+</section>
+
+<!-- ═══════════════════════════ 4 — FÓSFORO VERDE/ÂMBAR ═══════════════════════════ -->
+<section class="slide">
+  <div class="content">
+    <div class="eyebrow">curiosidade nº 3</div>
+    <div class="headline">Por que os primeiros terminais eram verdes (ou âmbar)</div>
+    <div class="body-text">
+      Os terminais monocromáticos dos anos 70 e 80 quase nunca eram brancos. Eram verdes ou âmbar.
+      A razão não era estética: certos compostos de fósforo verde e âmbar tinham maior durabilidade
+      e persistência luminosa, e muita gente que passava turnos inteiros na frente deles relatava
+      menos cansaço visual do que com um branco estourado.
+    </div>
+    <div class="body-text">
+      É esse mesmo visual que recriamos no filtro <strong>Fósforo Âmbar</strong> do EyeZen — não
+      como nostalgia vazia, mas porque a lógica por trás daquela escolha antiga ainda faz sentido hoje.
+    </div>
+    <div class="curio-box">
+      <div class="tag">tecnicamente falando</div>
+      <p>Recriar esse efeito não é só "deixar tudo laranja". É converter a imagem pra escala de cinza
+      e depois tingir de âmbar — uma transformação que mistura os três canais de cor entre si, algo que
+      um simples ajuste de brilho não consegue fazer sozinho.</p>
+    </div>
+  </div>
+  <div class="footer">
+    <span class="brand"><b>EyeZen</b> — filtros de cor para Windows</span>
+    <span>4 / 9</span>
+  </div>
+</section>
+
+<!-- ═══════════════════════════ 5 — O BUG SILENCIOSO ═══════════════════════════ -->
+<section class="slide">
+  <div class="content">
+    <div class="eyebrow">curiosidade nº 4 · dos bastidores</div>
+    <div class="headline">O Windows nos ignorou por semanas, educadamente</div>
+    <div class="body-text">
+      Criamos um filtro pensado pra parecer luz de vela: quase sem azul nenhum. Mandamos o comando pro
+      Windows. Nada aconteceu. Sem erro. Sem aviso. A tela continuava exatamente igual, e a função
+      retornava dizendo que tinha dado tudo certo.
+    </div>
+    <div class="body-text">
+      Depois de muito investigar, descobrimos: drivers modernos de placa de vídeo rejeitam, em silêncio,
+      qualquer ajuste de cor abaixo de um certo limite. A explicação mais comum pra essa trava é defensiva —
+      anos atrás, softwares maliciosos usavam exatamente essa função pra escurecer a tela da vítima como
+      forma de extorsão. Os fabricantes de driver parecem ter colocado um piso mínimo como proteção.
+    </div>
+    <div class="pull-quote">
+      A função retornava sucesso. A tela não mudava nada. Foi a primeira vez que um "deu certo"
+      me deixou desconfiado.
+    </div>
+  </div>
+  <div class="footer">
+    <span class="brand"><b>EyeZen</b> — filtros de cor para Windows</span>
+    <span>5 / 9</span>
+  </div>
+</section>
+
+<!-- ═══════════════════════════ 6 — MAGNIFICATION API ═══════════════════════════ -->
+<section class="slide">
+  <div class="content">
+    <div class="eyebrow">curiosidade nº 5</div>
+    <div class="headline">A solução morava numa ferramenta de acessibilidade</div>
+    <div class="body-text">
+      Enquanto procurávamos um jeito de contornar aquele limite, encontramos a
+      <strong>Magnification API</strong> — criada para a Lupa do Windows, a ferramenta de acessibilidade
+      que amplia a tela para pessoas com baixa visão. Como efeito colateral, ela aceita uma matriz de
+      transformação de cor completa, sem nenhum piso mínimo.
+    </div>
+    <div class="body-text">
+      Achamos bonito, de certa forma: os filtros mais intensos do EyeZen existem porque uma ferramenta
+      feita para deixar telas mais acessíveis foi reaproveitada pra deixar telas mais confortáveis.
+      Dois problemas de visão diferentes, resolvidos pelo mesmo canto esquecido do sistema.
+    </div>
+    <div class="curio-box">
+      <div class="tag">detalhe curioso</div>
+      <p>Essa mesma ideia — misturar os três canais de cor entre si, em vez de só apagar um deles —
+      é como filtros tipo sépia funcionam em apps de foto. Não é um "menos azul". É uma
+      <strong>mistura</strong> calculada entre vermelho, verde e azul.</p>
+    </div>
+  </div>
+  <div class="footer">
+    <span class="brand"><b>EyeZen</b> — filtros de cor para Windows</span>
+    <span>6 / 9</span>
+  </div>
+</section>
+
+<!-- ═══════════════════════════ 7 — FOREGROUND WINDOW ═══════════════════════════ -->
+<section class="slide">
+  <div class="content">
+    <div class="eyebrow">curiosidade nº 6</div>
+    <div class="headline">Como o app sabe o que você está fazendo</div>
+    <div class="body-text">
+      A cada meio segundo, o EyeZen pergunta ao Windows: "qual programa está em foco agora?".
+      Se for o Chrome, aplica o filtro de leitura noturna. Se você voltar pro editor de código,
+      restaura o filtro que você tinha escolhido manualmente. O custo disso pra CPU é praticamente zero.
+    </div>
+    <div class="body-text">
+      O curioso é que essa mesma chamada de sistema, <strong>GetForegroundWindow</strong>, é usada por
+      leitores de tela como o NVDA e o JAWS para saber o que anunciar em voz alta pra usuários cegos.
+      É o mesmo gancho de baixo nível, usado por dois softwares com propósitos bem diferentes.
+    </div>
+    <div class="pull-quote">
+      A mesma chamada que ajuda um leitor de tela a saber onde você está, aqui ajuda
+      a tela a saber que cor mostrar.
+    </div>
+  </div>
+  <div class="footer">
+    <span class="brand"><b>EyeZen</b> — filtros de cor para Windows</span>
+    <span>7 / 9</span>
+  </div>
+</section>
+
+<!-- ═══════════════════════════ 8 — NÚMEROS ═══════════════════════════ -->
+<section class="slide">
+  <div class="content">
+    <div class="eyebrow">em números, sem exagero</div>
+    <div class="headline">O que essas escolhas custaram (e economizaram)</div>
+    <div class="body-text">
+      A primeira versão do EyeZen foi escrita em Python. Funcionava, mas o executável final pesava
+      <strong>67 MB</strong> — o runtime inteiro da linguagem embutido junto. Reescrevemos tudo em Rust.
+      O resultado pesa <span class="num-inline">3.5 MB</span>, cerca de <strong>19 vezes menor</strong>,
+      e abre instantaneamente em vez dos 3 a 5 segundos de antes.
+    </div>
+
+    <div class="bar-compare">
+      <div class="bar-row">
+        <div class="bar-label"><span>Versão em Python</span><b>67 MB</b></div>
+        <div class="bar-track"><div class="bar-fill old"></div></div>
+      </div>
+      <div class="bar-row">
+        <div class="bar-label"><span>Versão em Rust (atual)</span><b>3.5 MB</b></div>
+        <div class="bar-track"><div class="bar-fill new"></div></div>
+      </div>
+    </div>
+
+    <div class="body-text" style="margin-top:40px;">
+      No fim, são <span class="num-inline">16</span> filtros configuráveis, uma checagem de app em foco
+      a cada <span class="num-inline">500ms</span>, e uma transição de
+      <span class="num-inline">1,4 segundos</span> entre filtros — tudo isso sem nenhuma
+      dependência externa rodando por trás.
+    </div>
+  </div>
+  <div class="footer">
+    <span class="brand"><b>EyeZen</b> — filtros de cor para Windows</span>
+    <span>8 / 9</span>
+  </div>
+</section>
+
+<!-- ═══════════════════════════ 9 — FECHAMENTO ═══════════════════════════ -->
+<section class="slide">
+  <div class="content" style="justify-content:center; padding-top:0;">
+    <div class="eyebrow">fim de linha</div>
+    <div class="fleuron">❧</div>
+    <div class="headline" style="font-size:52px; max-width:820px;">
+      No fim, é só luz entrando no seu olho — só que com um pouco mais de cuidado
+    </div>
+    <div class="body-text" style="max-width:700px;">
+      Nada disso precisava ser complicado. Um filtro de cor podia muito bem ser só três números
+      multiplicando um pixel. Mas entre essa ideia simples e uma ferramenta que funciona de verdade
+      no dia a dia, tinha um driver desconfiado, uma API de acessibilidade emprestada e uma curva de
+      transição que ninguém percebe até sentir a falta dela.
+    </div>
+
+    <div class="curio-box" style="margin-top:52px; max-width:760px; border-left-color: var(--accent);">
+      <div class="tag" style="color:var(--accent)">download gratuito</div>
+      <p style="font-size:24px; color:var(--ink); font-family:var(--sans); font-weight:700; margin-top:12px;">
+        github.com/Andrade020/EyeZen2
+      </p>
+      <p style="margin-top:8px; font-family:var(--sans); font-size:16px; color:var(--muted-2);">
+        .exe portátil · sem instalação · Windows 10 e 11
+      </p>
+    </div>
+  </div>
+  <div class="footer">
+    <span class="brand"><b>EyeZen</b> — feito em Rust</span>
+    <span>9 / 9</span>
+  </div>
+</section>
+
+</body>
+</html>
